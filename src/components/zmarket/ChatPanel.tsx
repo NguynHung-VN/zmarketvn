@@ -38,6 +38,8 @@ import {
 interface ChatPanelProps {
   userId: string
   userName: string
+  initialTargetUserId?: string | null
+  onClearInitialTargetUserId?: () => void
 }
 
 interface ConversationUser {
@@ -133,7 +135,12 @@ function getRoleLabel(role: string): string {
 
 // ─── ChatPanel Component ─────────────────────────────────────────────────────
 
-export default function ChatPanel({ userId, userName }: ChatPanelProps) {
+export default function ChatPanel({
+  userId,
+  userName,
+  initialTargetUserId,
+  onClearInitialTargetUserId,
+}: ChatPanelProps) {
   // ── State ─────────────────────────────────────────────────────────────────
   const [socket, setSocket] = useState<Socket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -701,6 +708,13 @@ export default function ChatPanel({ userId, userName }: ChatPanelProps) {
     },
     []
   )
+
+  useEffect(() => {
+    if (initialTargetUserId) {
+      startConversation(initialTargetUserId)
+      onClearInitialTargetUserId?.()
+    }
+  }, [initialTargetUserId, startConversation, onClearInitialTargetUserId])
 
   // ── Select conversation ───────────────────────────────────────────────────
   const selectConversation = useCallback((convId: string) => {

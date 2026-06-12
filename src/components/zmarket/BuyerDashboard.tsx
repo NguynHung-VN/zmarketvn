@@ -250,7 +250,14 @@ export default function BuyerDashboard() {
             {activeTab === 'wishlist' && <WishlistTab />}
             {activeTab === 'cart' && <CartTab />}
             {activeTab === 'orders' && <OrdersTab />}
-            {activeTab === 'chat' && user && <ChatPanel userId={user.id} userName={user.name} />}
+            {activeTab === 'chat' && user && (
+              <ChatPanel
+                userId={user.id}
+                userName={user.name}
+                initialTargetUserId={useAppStore((s) => s.chatTargetUserId)}
+                onClearInitialTargetUserId={() => useAppStore.setState({ chatTargetUserId: null })}
+              />
+            )}
             {activeTab === 'feedback' && user && <FeedbackPanel userId={user.id} userRole={user.role} />}
             {activeTab === 'profile' && <ProfileTab />}
           </div>
@@ -912,24 +919,38 @@ function ShopDetailView({ shopId, onBack }: { shopId: string; onBack: () => void
           <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
         </div>
         <CardContent className="p-6 -mt-10 relative">
-          <div className="flex items-end gap-4">
-            <div className="w-16 h-16 rounded-xl bg-white shadow-md flex items-center justify-center border-2 border-white shrink-0 overflow-hidden">
-              {shop.image ? (
-                <img src={shop.image} alt={shop.name} className="w-full h-full object-cover" />
-              ) : (
-                <Store className="h-8 w-8 text-green-600" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0 pb-1">
-              <h2 className="text-xl font-bold">{shop.name}</h2>
-              <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
-                <span className="flex items-center gap-1">
-                  <StarRating rating={shop.rating} />
-                  <span className="font-medium">{shop.rating.toFixed(1)}</span>
-                </span>
-                <span>{shop._count.products} sản phẩm</span>
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div className="flex items-end gap-4">
+              <div className="w-16 h-16 rounded-xl bg-white shadow-md flex items-center justify-center border-2 border-white shrink-0 overflow-hidden">
+                {shop.image ? (
+                  <img src={shop.image} alt={shop.name} className="w-full h-full object-cover" />
+                ) : (
+                  <Store className="h-8 w-8 text-green-600" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0 pb-1">
+                <h2 className="text-xl font-bold">{shop.name}</h2>
+                <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
+                  <span className="flex items-center gap-1">
+                    <StarRating rating={shop.rating} />
+                    <span className="font-medium">{shop.rating.toFixed(1)}</span>
+                  </span>
+                  <span>{shop._count.products} sản phẩm</span>
+                </div>
               </div>
             </div>
+            {shop.owner?.id && (
+              <Button
+                onClick={() => {
+                  useAppStore.setState({ chatTargetUserId: shop.owner.id, currentTab: 'chat' })
+                }}
+                className="bg-green-600 hover:bg-green-700 text-white shrink-0 flex items-center gap-2"
+                size="sm"
+              >
+                <MessageCircle className="h-4 w-4" />
+                Nhắn tin với tiểu thương
+              </Button>
+            )}
           </div>
           {shop.description && (
             <p className="text-sm text-muted-foreground mt-3">{shop.description}</p>

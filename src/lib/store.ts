@@ -39,10 +39,12 @@ interface AppState {
   cart: CartItem[]
   cartTotal: number
   isLoading: boolean
+  chatTargetUserId: string | null
   // methods
   setUser: (user: User | null) => void
   setView: (view: string) => void
   setTab: (tab: string) => void
+  setChatTargetUserId: (id: string | null) => void
   setLoading: (loading: boolean) => void
   fetchCart: () => Promise<void>
   addToCart: (productId: string, quantity?: number) => Promise<void>
@@ -58,11 +60,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   user: null,
   currentView: 'landing',
   currentTab: '',
+  chatTargetUserId: null,
   cart: [],
   cartTotal: 0,
   isLoading: false,
 
   setUser: (user) => set({ user }),
+  setChatTargetUserId: (chatTargetUserId) => set({ chatTargetUserId }),
 
   setView: (view) => set({ currentView: view, currentTab: '' }),
 
