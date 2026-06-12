@@ -25,6 +25,18 @@ export async function GET(
       return NextResponse.json({ error: 'Không có quyền truy cập' }, { status: 403 })
     }
 
+    // Mark incoming messages as read
+    await db.message.updateMany({
+      where: {
+        conversationId: id,
+        senderId: { not: user.id },
+        isRead: false,
+      },
+      data: {
+        isRead: true,
+      },
+    })
+
     const { searchParams } = new URL(request.url)
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
     const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '50')), 100)
