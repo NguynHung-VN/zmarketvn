@@ -165,7 +165,18 @@ const buyerTabs = [
 ]
 
 export default function BuyerDashboard() {
-  const { user, currentTab, setTab, cart, fetchCart, addToCart, updateCartItem, removeCartItem } = useAppStore()
+  const {
+    user,
+    currentTab,
+    setTab,
+    chatTargetUserId,
+    setChatTargetUserId,
+    cart,
+    fetchCart,
+    addToCart,
+    updateCartItem,
+    removeCartItem,
+  } = useAppStore()
   const activeTab = currentTab || 'products'
 
   const handleTabChange = (tab: string) => {
@@ -254,8 +265,8 @@ export default function BuyerDashboard() {
               <ChatPanel
                 userId={user.id}
                 userName={user.name}
-                initialTargetUserId={useAppStore((s) => s.chatTargetUserId)}
-                onClearInitialTargetUserId={() => useAppStore.setState({ chatTargetUserId: null })}
+                initialTargetUserId={chatTargetUserId}
+                onClearInitialTargetUserId={() => setChatTargetUserId(null)}
               />
             )}
             {activeTab === 'feedback' && user && <FeedbackPanel userId={user.id} userRole={user.role} />}
