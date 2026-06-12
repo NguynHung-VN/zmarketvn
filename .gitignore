@@ -76,3 +76,4 @@ DEPLOY.md
 deploy.sh
 # Skills directory
 /skills/
+.vercel

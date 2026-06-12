@@ -23,7 +23,7 @@ export async function uploadToCloudinary(
   filename?: string
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const uploadOptions: cloudinary.UploadUploadOptions = {
+    const uploadOptions: any = {
       folder,
       resource_type: 'image',
       transformation: [

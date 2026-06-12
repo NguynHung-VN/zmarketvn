@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs'
 import { createHmac, timingSafeEqual } from 'crypto'
 
 // Cookie signing secret - MUST be set via environment variable
-const COOKIE_SECRET = process.env.COOKIE_SECRET
+const COOKIE_SECRET = process.env.COOKIE_SECRET as string
 if (!COOKIE_SECRET) {
   throw new Error('COOKIE_SECRET environment variable is required. Set it in .env.local')
 }

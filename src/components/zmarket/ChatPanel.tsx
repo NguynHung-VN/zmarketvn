@@ -1039,7 +1039,7 @@ export default function ChatPanel({ userId, userName }: ChatPanelProps) {
                                 src={msg.imageUrl}
                                 alt="Hình ảnh"
                                 className="max-w-full rounded-lg max-h-60 object-cover cursor-pointer"
-                                onClick={() => window.open(msg.imageUrl, '_blank')}
+                                onClick={() => msg.imageUrl && window.open(msg.imageUrl, '_blank')}
                               />
                               {msg.content && msg.content !== msg.imageUrl && (
                                 <p className="text-sm">{msg.content}</p>

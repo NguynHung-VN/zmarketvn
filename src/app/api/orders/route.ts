@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
     const sanitizedNote = data.note ? sanitizeForStorage(data.note) : null
 
     // Create an order per shop
-    const orders = []
+    const orders: any[] = []
     for (const [shopId, items] of itemsByShop) {
       const total = items.reduce(
         (sum, item) => sum + item.product.price * item.quantity,
