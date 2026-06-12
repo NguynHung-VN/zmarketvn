@@ -1,0 +1,43 @@
+{
+  "success": true,
+  "query": "Vietnamese fresh vegetables market",
+  "count": 5,
+  "ranked": true,
+  "results": [
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/3f68734c3908.jpeg",
+      "caption": "A person in a dark jacket selects fresh green limes from a basket at a vibrant market stall. suitable for background image",
+      "source": "Pexels",
+      "original_width": "1125px",
+      "original_height": "750px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/33d22c2149e1.jpg",
+      "caption": "The image shows a vibrant outdoor market with fresh vegetables and people, featuring watermarks and text.",
+      "source": "Dreamstime.com",
+      "original_width": "1600px",
+      "original_height": "1158px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/ac93ae2fdeda.jpg",
+      "caption": "A group of people are at an exhibition booth displaying various agricultural products like lychees and packaged goods. The image contains text: PHUONG PHUONG SON, PHUONG CHU, and other Vietnamese text on banners and product labels.",
+      "source": "Vietnam Agriculture",
+      "original_width": "1200px",
+      "original_height": "800px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/bd5402fc4d51.jpg",
+      "caption": "The image contains watermarks (Alamy logo) and text: \"alamy Image ID: 3E5BFY8 www.alamy.com\".",
+      "source": "Alamy",
+      "original_width": "866px",
+      "original_height": "1390px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/1ca79b83d791.jpg",
+      "caption": "Woven baskets containing green limes, white radishes, and live ducks, with flowers in the background. suitable for background image",
+      "source": "Travels with Tricia",
+      "original_width": "1200px",
+      "original_height": "720px"
+    }
+  ]
+}

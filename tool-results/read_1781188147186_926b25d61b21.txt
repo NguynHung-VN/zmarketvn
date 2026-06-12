@@ -1,0 +1,549 @@
+     1→# ZMarket Vietnam - Project Worklog
+     2→
+     3→## Project Overview
+     4→ZMarket Vietnam is a digital marketplace (chợ số) platform connecting buyers, sellers, shippers and admins. Built with Next.js 16, TypeScript, Tailwind CSS 4, shadcn/ui, Prisma ORM (SQLite).
+     5→
+     6→## Current Status (Updated: Round 2 QA - 2026-06-11)
+     7→All core features + enhancements are implemented and verified:
+     8→- ✅ Landing page with hero background image, animated stats, testimonials, how-it-works, partners, rich footer
+     9→- ✅ Login/Register with role selection and test account auto-fill (4 roles)
+    10→- ✅ Buyer dashboard: Product browsing (enhanced cards), category filter, search, product detail dialog, shop detail view, cart with checkout, orders with rating, profile
+    11→- ✅ Seller dashboard: Overview stats, product CRUD, order management, shop info
+    12→- ✅ Admin dashboard: Platform stats with bar charts (recharts), user management, shops overview, orders overview
+    13→- ✅ Shipper dashboard: Active deliveries with status update, delivery history, profile
+    14→- ✅ All APIs returning 200, no server errors
+    15→- ✅ ESLint passes cleanly
+    16→- ✅ Responsive design with mobile bottom tabs
+    17→
+    18→## Completed Work
+    19→
+    20→---
+    21→Task ID: 1
+    22→Agent: main
+    23→Task: Design database schema
+    24→
+    25→Work Log:
+    26→- Created Prisma schema with models: User, Shop, Category, Product, CartItem, Order, OrderItem, Review
+    27→- Pushed schema to SQLite database
+    28→
+    29→Stage Summary:
+    30→- Database schema established with full marketplace relationships
+    31→
+    32→---
+    33→Task ID: 2-a
+    34→Agent: full-stack-developer
+    35→Task: Build backend API routes
+    36→
+    37→Work Log:
+    38→- Created auth routes (login, register, me, logout) with cookie-based session
+    39→- Created products, categories, shops routes with pagination and search
+    40→- Created cart CRUD routes
+    41→- Created orders routes with role-based filtering
+    42→- Created admin stats, user management routes
+    43→- Created seller product CRUD, order management routes
+    44→- Created shipper delivery routes
+    45→- Created seed script with Vietnamese marketplace data
+    46→
+    47→Stage Summary:
+    48→- 22 API route files created
+    49→- Auth with SHA-256 password hashing and cookie-based sessions
+    50→- Seed script with 7 users, 6 categories, 4 shops, 31 products, 5 orders, 8 reviews
+    51→
+    52→---
+    53→Task ID: 2-b
+    54→Agent: general-purpose
+    55→Task: Search marketplace product images
+    56→
+    57→Work Log:
+    58→- Searched for 8 categories of images using z-ai image-search
+    59→- Compiled 30 OSS-hosted image URLs into product-images.json
+    60→
+    61→Stage Summary:
+    62→- Real Vietnamese marketplace images available at /home/z/my-project/product-images.json
+    63→
+    64→---
+    65→Task ID: 3-8
+    66→Agent: full-stack-developer
+    67→Task: Build complete ZMarket frontend
+    68→
+    69→Work Log:
+    70→- Created Zustand store (src/lib/store.ts) with auth, view routing, and cart operations
+    71→- Created format helpers (src/lib/format.ts) with Vietnamese formatting
+    72→- Created LandingView with hero, role cards, stats, features, CTA
+    73→- Created LoginView with role selector, auto-fill test accounts, login form
+    74→- Created RegisterView with registration form
+    75→- Created BuyerDashboard with 5 tabs: Products, Shops, Cart, Orders, Profile
+    76→- Created SellerDashboard with 4 tabs: Overview, Products, Orders, Shop
+    77→- Created AdminDashboard with 4 tabs: Overview, Users, Shops, Orders
+    78→- Created ShipperDashboard with 3 tabs: Deliveries, History, Profile
+    79→- Updated page.tsx with client-side view routing
+    80→- Updated layout.tsx with ZMarket metadata and green theme
+    81→
+    82→Stage Summary:
+    83→- Complete SPA frontend with all 4 role dashboards
+    84→- Green theme (#16a34a) with shadcn/ui components
+    85→- All UI text in Vietnamese
+    86→- Responsive design with mobile bottom tabs and desktop sidebar
+    87→- ESLint passes cleanly
+    88→
+    89→---
+    90→Task ID: 10
+    91→Agent: main
+    92→Task: Testing & QA with agent-browser
+    93→
+    94→Work Log:
+    95→- Tested landing page: hero, role cards, stats, features render correctly
+    96→- Tested login flow: role selection auto-fills credentials, form submission works
+    97→- Tested buyer dashboard: products grid with images/prices, cart with items, orders with status badges
+    98→- Tested admin dashboard: stats cards (8 users, shops count), user management
+    99→- Tested seller dashboard: overview with revenue stats, recent orders
+   100→- Tested shipper dashboard: active deliveries with status update button
+   101→- All 4 role dashboards verified working
+   102→- Lint passes cleanly
+   103→
+   104→Stage Summary:
+   105→- All core functionality working correctly
+   106→- No console errors or page errors
+   107→- Responsive design verified
+   108→- Sticky footer present on all views
+   109→
+   110→## Key Files
+   111→- Main page: src/app/page.tsx
+   112→- Store: src/lib/store.ts
+   113→- Format helpers: src/lib/format.ts
+   114→- Auth helpers: src/lib/auth.ts
+   115→- DB client: src/lib/db.ts
+   116→- Components: src/components/zmarket/
+   117→- Seed: prisma/seed.ts
+   118→
+   119→## Test Accounts
+   120→- 🛍️ Buyer: nguoimua@zmarket.vn / 123456
+   121→- 👑 Admin: admin@123 / admin@123
+   122→- 🏪 Seller: tieuthuong@zmarket.vn / 123456
+   123→- 🏍️ Shipper: shipper@zmarket.vn / 123456
+   124→
+   125→## Unresolved Issues / Next Steps
+   126→- ✅ Google OAuth login implemented (needs real Google Cloud Console credentials in .env.local)
+   127→- Facebook login button is decorative only (no OAuth setup)
+   128→- Product search could be enhanced with debouncing
+   129→- Could add real-time order tracking with WebSocket
+   130→- Could add seller registration/approval flow
+   131→- Could add shipping fee calculation based on distance
+   132→- Could add product image gallery (multiple images per product)
+   133→- Could add chat/messaging between buyer and seller
+   134→- Could add payment integration (VNPay, MoMo)
+   135→- Could add order tracking map for shipper
+   136→- Could add push notifications
+   137→- Stats counter animation on landing page may not trigger on first load (IntersectionObserver timing)
+   138→
+   139→---
+   140→Task ID: R1-QA
+   141→Agent: main (cron review)
+   142→Task: Round 2 QA testing and verification of enhancements
+   143→
+   144→Work Log:
+   145→- Tested full logout/login flow across all 4 roles
+   146→- Verified landing page with new hero image, animated stats, testimonials, how-it-works, partners, footer
+   147→- Verified buyer product detail dialog opens and shows product info, reviews, add-to-cart
+   148→- Verified improved product cards with "Xem chi tiết" links, star ratings, discount badges
+   149→- Verified shop detail view with shop banner, info, filtered product grid, back button
+   150→- Verified admin dashboard with recharts bar charts (orders by status, users by role)
+   151→- Verified seller dashboard with overview stats
+   152→- Verified shipper dashboard with delivery management
+   153→- All API routes returning 200, no server errors
+   154→- ESLint passes cleanly
+   155→- No console errors or page errors
+   156→
+   157→Stage Summary:
+   158→- All enhancements from R3-R8 are working correctly
+   159→- No bugs found during QA
+   160→- Project is stable and ready for further feature additions
+   161→
+   162→---
+   163→Task ID: R3-R8
+   164→Agent: full-stack-developer
+   165→Task: Enhance ZMarket styling and add features
+   166→
+   167→Work Log:
+   168→- Created POST /api/products/[id]/reviews API endpoint for buyer product reviews with validation (must have delivered order, no duplicate reviews)
+   169→- Enhanced LandingView with: real hero background image from product-images.json, floating/pulsing decorative elements, animated counting stats (0→200+, 0→5000+), "How it works" 3-step section with connectors, testimonials section with 3 Vietnamese reviews, partner/brand logos section with emojis, rich footer with links/social/about, smooth scroll fade-in animations via IntersectionObserver
+   170→- Added Product Detail Dialog to BuyerDashboard: full product detail with large image, star rating display, price with discount badge, shop info, description, quantity picker, reviews section, "Thêm vào giỏ" green button
+   171→- Improved Product Cards: hover scale effect (hover:scale-[1.02]), discount badge, visual star rating (★★★★☆), shop name with Store icon, image loading skeleton placeholder, green "Thêm vào giỏ" button, "Xem chi tiết" link, out-of-stock overlay
+   172→- Added Shop Detail View: click shop card/name → shop banner, info, rating, address/phone, product grid filtered by shopId with back button
+   173→- Added Order Rating: "Đánh giá" button on DELIVERED orders, star picker (1-5) with hover, comment textarea, product selector for multi-item orders, "Đã đánh giá" badge, POST to /api/products/[id]/reviews
+   174→- Polished all dashboards: sticky header with backdrop-blur-md, mobile tab bar with active indicator line and icon scale, fade-in animation between tabs, emoji-based empty states, consistent hover shadows
+   175→- Added Admin Charts with recharts: bar chart for orders by status (color-coded), bar chart for users by role, revenue summary card with TrendingUp icon, styled stat cards with colored left borders
+   176→- All lint checks pass cleanly
+   177→
+   178→Stage Summary:
+   179→- Landing page completely redesigned with hero image, animated stats, testimonials, how-it-works, partners, rich footer
+   180→- Buyer dashboard significantly enhanced with product detail dialog, improved cards, shop detail view, order rating
+   181→- All 4 dashboards polished with backdrop blur headers, mobile tab indicators, fade animations, emoji empty states
+   182→- Admin dashboard now has interactive bar charts using recharts
+   183→- New API: POST /api/products/[id]/reviews for buyer product reviews
+   184→- All ESLint checks pass, no errors
+   185→
+   186→---
+   187→Task ID: 1
+   188→Agent: schema-updater
+   189→Task: Update Prisma Schema with Chat, Message, Feedback, ProductImage models
+   190→
+   191→Work Log:
+   192→- Added Conversation model (id, type [DIRECT/GROUP/SUPPORT], name?, createdAt, updatedAt, participants[], messages[])
+   193→- Added Participant model (id, conversationId, userId, lastReadAt?, createdAt, conversation relation, user relation, @@unique([conversationId, userId]))
+   194→- Added Message model (id, content, type [TEXT/IMAGE/SYSTEM], imageUrl?, conversationId, senderId, isRead, createdAt, conversation relation, sender relation)
+   195→- Added Feedback model (id, subject, content, type [FEEDBACK/COMPLAINT/SUGGESTION/BUG_REPORT], status [PENDING/IN_PROGRESS/RESOLVED/CLOSED], priority [LOW/MEDIUM/HIGH/URGENT], userId, adminReply?, repliedBy?, createdAt, updatedAt, user relation "UserFeedbacks", replier relation "AdminReplies")
+   196→- Added ProductImage model (id, url, productId, order, createdAt, product relation)
+   197→- Updated User model with new relations: conversations (Participant[]), messages (Message[]), feedbacks (Feedback[] "UserFeedbacks"), repliedFeedbacks (Feedback[] "AdminReplies")
+   198→- Updated Product model with new relation: images (ProductImage[])
+   199→- Ran `bun run db:push` — database synced successfully
+   200→- Ran `bun run db:generate` — Prisma Client generated successfully
+   201→
+   202→Stage Summary:
+   203→- 5 new models added to Prisma schema: Conversation, Participant, Message, Feedback, ProductImage
+   204→- User model extended with 4 new relation fields for messaging and feedback
+   205→- Product model extended with images relation for multiple product images
+   206→- All relations consistent, no naming conflicts
+   207→- Database and Prisma Client fully updated
+   208→
+   209→---
+   210→Task ID: 2
+   211→Agent: chat-service-builder
+   212→Task: Create Socket.io Real-time Chat Mini Service
+   213→
+   214→Work Log:
+   215→- Created `/home/z/my-project/mini-services/chat-service/package.json` with socket.io and better-sqlite3 dependencies, bun --hot dev script
+   216→- Created `/home/z/my-project/mini-services/chat-service/index.ts` with full Socket.io server implementation
+   217→- Used `bun:sqlite` instead of `better-sqlite3` at runtime because Bun does not support native better-sqlite3 bindings (ERR_DLOPEN_FAILED). bun:sqlite has a similar API and is fully compatible.
+   218→- Service runs on hardcoded port 3003
+   219→- CORS enabled for all origins (development mode)
+   220→- Connected to SQLite database at `/home/z/my-project/db/custom.db`
+   221→- Implemented all required Socket.io events:
+   222→  - Client→Server: authenticate, join-conversation, leave-conversation, send-message, typing, mark-read
+   223→  - Server→Client: new-message, user-typing, messages-read, unread-count, error
+   224→- Database operations: insert messages, mark messages as read, update participant lastReadAt, query unread counts
+   225→- All SQL queries use prepared statements for performance and safety
+   226→- Auto-join conversation rooms on user authentication
+   227→- Graceful shutdown handlers for SIGINT/SIGTERM
+   228→- Installed dependencies and started service — verified running on port 3003
+   229→
+   230→Stage Summary:
+   231→- Socket.io chat mini service running on port 3003
+   232→- All 6 client→server events and 5 server→client events implemented
+   233→- Database operations with prepared statements
+   234→- Service verified working via Socket.io polling endpoint
+   235→
+   236→---
+   237→Task ID: 3-a
+   238→Agent: api-builder
+   239→Task: Build API Routes for Chat, Feedback, and Image Upload
+   240→
+   241→Work Log:
+   242→- Created `/api/chat/conversations/route.ts`: GET all conversations (with last message, unread count, other participant info, search filter), POST create new conversation (DIRECT/GROUP/SUPPORT, duplicate check for DIRECT)
+   243→- Created `/api/chat/conversations/[id]/route.ts`: GET specific conversation with paginated messages (?page=1&limit=50), participant access check
+   244→- Created `/api/chat/messages/route.ts`: POST send message (TEXT/IMAGE/SYSTEM), participant verification, conversation updatedAt auto-update
+   245→- Created `/api/feedback/route.ts`: GET all feedback (admin sees all, user sees own, pagination ?page=1&limit=20, filter ?status=&type=), POST create feedback (FEEDBACK/COMPLAINT/SUGGESTION/BUG_REPORT with priority)
+   246→- Created `/api/feedback/[id]/route.ts`: GET specific feedback (owner or admin), PUT update feedback (admin only - status, adminReply, priority)
+   247→- Created `/api/upload/route.ts`: POST upload image (multipart/form-data, validates jpg/jpeg/png/webp, max 5MB, saves to public/uploads/ with unique filename)
+   248→- Created `/api/seller/products/[id]/images/route.ts`: POST add image to product (url, order), DELETE remove image from product (imageId), seller/admin access check
+   249→- Created `/home/z/my-project/public/uploads/` directory for image storage
+   250→- All routes follow project coding conventions: zod/v4 validation, Vietnamese error messages, proper HTTP status codes, consistent auth patterns
+   251→- ESLint passes cleanly, dev server compiles without errors
+   252→
+   253→Stage Summary:
+   254→- 7 API route files created across 4 feature areas
+   255→- Chat: 3 routes (conversations list, conversation detail, send message)
+   256→- Feedback: 2 routes (list/create, detail/update)
+   257→- Upload: 1 route (image upload)
+   258→- Product Images: 1 route (add/delete image)
+   259→- All routes use proper auth (requireAuth/requireRole), validation (zod), and error handling
+   260→
+   261→---
+   262→Task ID: 3-c
+   263→Agent: feedback-panel-builder
+   264→Task: Build Feedback Panel Component
+   265→
+   266→Work Log:
+   267→- Created POST/GET /api/feedback route for creating and listing feedback
+   268→  - GET: non-admin users see only their own feedback; admin sees all with filters (status, type, priority, search)
+   269→  - GET: admin receives stats summary (total, pending, inProgress, resolved)
+   270→  - POST: non-admin users can submit feedback with validation (subject required, content min 10 chars, valid type/priority)
+   271→  - Admin cannot submit feedback (they manage it)
+   272→- Created PUT /api/feedback/[id] route for admin feedback management
+   273→  - Admin can reply (adminReply + repliedBy), change status, change priority
+   274→  - Role check enforced (ADMIN only)
+   275→- Created FeedbackPanel component at /src/components/zmarket/FeedbackPanel.tsx
+   276→  - Two modes based on userRole: UserFeedbackPanel (BUYER/SELLER/SHIPPER) and AdminFeedbackPanel (ADMIN)
+   277→  - User mode: Tabs with "Gửi phản hồi" form and "Phản hồi của tôi" list
+   278→    - Form: subject input, type selector (FEEDBACK/COMPLAINT/SUGGESTION/BUG_REPORT), priority selector (LOW/MEDIUM/HIGH/URGENT), content textarea with char count, submit button
+   279→    - List: color-coded status badges (PENDING=yellow, IN_PROGRESS=blue, RESOLVED=green, CLOSED=gray), color-coded type badges (FEEDBACK=green, COMPLAINT=red, SUGGESTION=purple, BUG_REPORT=orange), admin reply highlighted in green, pagination
+   280→  - Admin mode: Stats summary cards, filter bar (search, status, type, priority), table view on desktop + card view on mobile, detail dialog with reply form, status/priority change dropdowns, pagination
+   281→  - All text in Vietnamese, responsive design, loading skeletons, sonner toasts, real-time list refresh after actions
+   282→- ESLint passes cleanly
+   283→- Dev server running normally
+   284→
+   285→Stage Summary:
+   286→- Feedback API routes created: POST/GET /api/feedback, PUT /api/feedback/[id]
+   287→- FeedbackPanel component with full user mode and admin mode
+   288→- Responsive design with table on desktop and cards on mobile for admin
+   289→- Color-coded badges for status, type, priority
+   290→- Admin stats summary, filters, reply form, status/priority controls
+   291→- All Vietnamese UI text
+   292→
+   293→---
+   294→Task ID: 3-b
+   295→Agent: chat-ui-builder
+   296→Task: Build Real-time Chat UI Component
+   297→
+   298→Work Log:
+   299→- Installed socket.io-client package in main project
+   300→- Created chat API routes:
+   301→  - GET /api/chat/conversations — list conversations with last message, unread count, other participant info
+   302→  - POST /api/chat/conversations — create new conversation (DIRECT type, duplicate check for existing)
+   303→  - GET /api/chat/conversations/[id] — get paginated messages for a conversation (participant access check)
+   304→  - GET /api/chat/users — search users for new conversations (by name/email)
+   305→  - POST /api/chat/upload — upload image for chat messages (validates image type, max 5MB, saves to public/uploads/chat/)
+   306→- Created ChatPanel component at /src/components/zmarket/ChatPanel.tsx:
+   307→  - Props: { userId: string, userName: string }
+   308→  - Socket.io connection to /?XTransformPort=3003 with WebSocket+polling transports
+   309→  - Split panel layout: left sidebar (conversation list) + right panel (message area)
+   310→  - Conversation list: searchable, shows other user name/avatar(emoji), last message preview, timestamp, unread badge, "New Chat" button
+   311→  - Message area: scrollable with auto-scroll to bottom, messages from current user on right (green bg), others on left (gray bg), sender name, timestamp, read receipts (✓✓)
+   312→  - Image message support: image preview with click-to-open, image upload via file picker (validates type and size)
+   313→  - Message input: text input with send button, send on Enter key, image upload button
+   314→  - Typing indicator: animated dots when other user is typing, auto-clear after 3 seconds
+   315→  - New Conversation Dialog: search users by name/email, quick userId input for testing
+   316→  - Toast notifications for new messages from non-active conversations
+   317→  - Mobile responsive: toggle between list and messages view with back button
+   318→  - Connection status indicator (green/red dot)
+   319→  - Loading states with Skeleton components
+   320→  - All UI text in Vietnamese
+   321→- Regenerated Prisma Client to include Conversation, Participant, Message models
+   322→- Tested all API endpoints successfully:
+   323→  - GET /api/chat/conversations returns conversations list
+   324→  - POST /api/chat/conversations creates new conversation with duplicate check
+   325→  - GET /api/chat/conversations/[id] returns paginated messages
+   326→- ESLint passes cleanly
+   327→
+   328→Stage Summary:
+   329→- 4 API route files created for chat functionality
+   330→- ChatPanel component with Socket.io real-time messaging
+   331→- Full conversation management: list, create, search, send/receive messages
+   332→- Image upload and preview support
+   333→- Typing indicators, read receipts, unread badges
+   334→- Mobile responsive with list/messages toggle
+   335→- Toast notifications for new messages
+   336→- Component is self-contained and ready to be embedded into dashboards
+   337→
+   338→---
+   339→Task ID: 5
+   340→Agent: google-oauth-builder
+   341→Task: Add Google OAuth Authentication
+   342→
+   343→Work Log:
+   344→- Created `/src/app/api/auth/google/route.ts` with full Google OAuth 2.0 flow:
+   345→  - Step 1: No `code` param → redirect to Google OAuth consent screen
+   346→  - Step 2: Exchange authorization code for access token via `https://oauth2.googleapis.com/token`
+   347→  - Step 3: Fetch user info from `https://www.googleapis.com/oauth2/v2/userinfo`
+   348→  - Step 4: Find or create user in database (auto-register with random hashed password for OAuth users)
+   349→  - Sets auth cookie and redirects to home on success
+   350→  - Redirects with `auth_error` query param on failure (access_denied, oauth_failed, account_disabled)
+   351→  - Uses environment variables with clear placeholder defaults
+   352→- Updated LoginView.tsx:
+   353→  - Added `useEffect` import and auth_error handling: reads `auth_error` from URL params, shows localized Vietnamese toast error, cleans URL with `replaceState`
+   354→  - Added `handleGoogleLogin` function that redirects to `/api/auth/google`
+   355→  - Enabled the Google button (removed `disabled`, added `onClick={handleGoogleLogin}`)
+   356→  - Added `Info` icon import from lucide-react
+   357→  - Added note below social buttons: "Yêu cầu cấu hình Google Client ID" with Info icon
+   358→  - Facebook button remains disabled
+   359→- Updated RegisterView.tsx:
+   360→  - Added `handleGoogleLogin` function that redirects to `/api/auth/google`
+   361→  - Added Google and Facebook social login buttons with "Hoặc" (Or) divider after the registration form
+   362→  - Google button enabled with `onClick={handleGoogleLogin}`, Facebook button disabled
+   363→  - Added `Info` icon import from lucide-react
+   364→  - Added note: "Yêu cầu cấu hình Google Client ID" with Info icon
+   365→- Created `/home/z/my-project/.env.local` with placeholder Google OAuth configuration:
+   366→  - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
+   367→  - Includes production configuration comments
+   368→- ESLint passes cleanly
+   369→- Dev server running normally
+   370→
+   371→Stage Summary:
+   372→- Google OAuth API route fully implemented (GET /api/auth/google) with complete OAuth 2.0 code flow
+   373→- LoginView and RegisterView both have functional Google login buttons that redirect to OAuth endpoint
+   374→- Auth error handling from OAuth redirects with Vietnamese error messages
+   375→- Configuration note visible to users about requiring Google Client ID setup
+   376→- Environment template created at .env.local for easy credential configuration
+   377→- Facebook button remains disabled (no OAuth implementation for Facebook)
+   378→- All code structure complete — only needs real Google Cloud Console credentials to work
+   379→
+   380→---
+   381→Task ID: 4
+   382→Agent: dashboard-integrator
+   383→Task: Integrate ChatPanel and FeedbackPanel into all 4 Dashboards
+   384→
+   385→Work Log:
+   386→- Modified BuyerDashboard.tsx:
+   387→  - Added imports for ChatPanel, FeedbackPanel, MessageCircle, MessageSquareWarning
+   388→  - Added 'chat' (Nhắn tin) and 'feedback' (Phản hồi) tabs to buyerTabs array
+   389→  - Added rendering of ChatPanel and FeedbackPanel in main content area
+   390→  - Passes userId/userName to ChatPanel, userId/userRole to FeedbackPanel
+   391→- Modified SellerDashboard.tsx:
+   392→  - Added imports for ChatPanel, FeedbackPanel, MessageCircle, MessageSquareWarning, ImagePlus, X (as XIcon)
+   393→  - Added 'chat' and 'feedback' tabs to sellerTabs array
+   394→  - Added rendering of ChatPanel and FeedbackPanel in main content area
+   395→  - Enhanced ProductForm with image upload support:
+   396→    - Added productImages state and uploadingImage state
+   397→    - Added useEffect to load existing images when editing a product (GET /api/seller/products/[id]/images)
+   398→    - Added handleImageUpload function that uploads files to /api/upload one by one
+   399→    - Added removeImage function to remove images from the state
+   400→    - Added image upload section in the form with dashed border file picker, thumbnail grid with hover-to-remove X buttons
+   401→    - Modified handleSubmit to save uploaded images to ProductImage table after product creation/update
+   402→  - Added product image thumbnail in the product list table
+   403→- Modified AdminDashboard.tsx:
+   404→  - Added imports for ChatPanel, FeedbackPanel, MessageCircle, MessageSquareWarning
+   405→  - Added 'chat' and 'feedback' tabs to adminTabs array
+   406→  - Added rendering of ChatPanel and FeedbackPanel in main content area (admin gets admin mode of FeedbackPanel)
+   407→- Modified ShipperDashboard.tsx:
+   408→  - Added imports for ChatPanel, FeedbackPanel, MessageCircle, MessageSquareWarning
+   409→  - Added 'chat' and 'feedback' tabs to shipperTabs array (before 'profile')
+   410→  - Added rendering of ChatPanel and FeedbackPanel in main content area
+   411→- Added GET handler to /api/seller/products/[id]/images/route.ts for loading product images
+   412→- ESLint passes cleanly
+   413→- Dev server running normally
+   414→
+   415→Stage Summary:
+   416→- All 4 dashboards now have Chat (Nhắn tin) and Feedback (Phản hồi) tabs integrated
+   417→- Seller dashboard has product image upload feature with thumbnail preview and remove buttons
+   418→- Product images are saved to ProductImage table via API on product create/update
+   419→- Existing product images are loaded when editing a product
+   420→- Admin gets admin mode of FeedbackPanel (with stats, filters, reply functionality)
+   421→- All other roles get user mode of FeedbackPanel (with submit form and feedback list)
+   422→
+   423→---
+   424→Task ID: deploy-1
+   425→Agent: deployment-prep
+   426→Task: Prepare ZMarketVN for Vercel Deployment
+   427→
+   428→Work Log:
+   429→- Updated `next.config.ts`:
+   430→  - Changed `output` to conditional: `standalone` for non-Vercel, `undefined` for Vercel (uses `process.env.VERCEL`)
+   431→  - Added `images.remotePatterns` for external image domains (sfile.chatglm.cn, res.cloudinary.com, images.unsplash.com)
+   432→- Created `vercel.json`:
+   433→  - Build command swaps to PostgreSQL schema before build: `cp prisma/schema.production.prisma prisma/schema.prisma && prisma generate && next build`
+   434→  - Uses `bun install` for dependencies
+   435→  - Region set to `sin1` (Singapore)
+   436→- Created `prisma/schema.production.prisma`:
+   437→  - PostgreSQL version of the schema (same models, different provider)
+   438→  - `provider = "postgresql"` with `url = env("DATABASE_URL")`
+   439→  - Identical models to SQLite schema for seamless switching
+   440→- Created `.env.example`:
+   441→  - Template for all environment variables (DATABASE_URL, Google OAuth, Chat config, App URL)
+   442→  - Includes examples for Vercel Postgres, Supabase, and Neon free tiers
+   443→  - Clear comments for local vs Vercel configuration
+   444→- Updated `ChatPanel.tsx` with HTTP polling fallback:
+   445→  - Added `pollingMode` state that activates when Socket.io is unavailable
+   446→  - If Socket.io doesn't connect within 5 seconds, automatically switches to polling mode
+   447→  - Polling mode: fetches messages every 3 seconds via `/api/chat/conversations/[id]` API
+   448→  - Polling mode: sends messages via `POST /api/chat/messages` HTTP API instead of socket.emit
+   449→  - Polling mode: conversation list refreshes every 6 seconds
+   450→  - Visual indicator: "Tự động cập nhật" (auto-refresh) badge with RefreshCw icon
+   451→  - ConnectionStatus component shows polling/connected/disconnecting states
+   452→  - Graceful fallback: tries Socket.io first, falls back to polling if unavailable
+   453→  - Removed unused eslint-disable directives (fixed lint warnings)
+   454→- Created `DEPLOY.md`:
+   455→  - Comprehensive step-by-step Vercel deployment guide
+   456→  - 3 PostgreSQL options: Vercel Postgres, Supabase, Neon (all free tier)
+   457→  - Instructions for schema migration and database seeding
+   458→  - Environment variable configuration table
+   459→  - Architecture diagram showing local vs Vercel differences
+   460→  - Troubleshooting section for common issues (file uploads, chat polling, DB connections)
+   461→  - Notes on limitations: file uploads don't persist on Vercel (need cloud storage)
+   462→- Verified all changes:
+   463→  - ESLint passes cleanly (0 errors, 0 warnings)
+   464→  - Dev server running normally on port 3000
+   465→  - Chat service running on port 3003
+   466→  - API endpoints responding correctly (categories, auth, chat)
+   467→  - All existing functionality preserved for local development
+   468→
+   469→Stage Summary:
+   470→- Project fully prepared for Vercel deployment with dual-database support (SQLite local / PostgreSQL Vercel)
+   471→- Chat works on Vercel via HTTP polling fallback when Socket.io is unavailable
+   472→- Complete deployment documentation created
+   473→- All existing local dev functionality preserved and working
+   474→- Files created/modified:
+   475→  - Modified: next.config.ts, src/components/zmarket/ChatPanel.tsx
+   476→  - Created: vercel.json, prisma/schema.production.prisma, .env.example, DEPLOY.md
+   477→
+   478→---
+   479→Task ID: deploy-prep
+   480→Agent: main
+   481→Task: Prepare Vercel deployment configuration
+   482→
+   483→Work Log:
+   484→- Installed Vercel CLI and Netlify CLI globally
+   485→- Updated next.config.ts: conditional output (standalone for local, default for Vercel), added remote image patterns
+   486→- Updated ChatPanel.tsx: auto-detect Socket.io availability, fallback to HTTP polling every 3 seconds on Vercel
+   487→- Created vercel.json: build command auto-swaps to PostgreSQL schema before build
+   488→- Created prisma/schema.production.prisma: PostgreSQL version of schema for Vercel deployment
+   489→- Created .env.example: complete environment variable template
+   490→- Created DEPLOY.md: comprehensive deployment guide with architecture diagrams
+   491→- Created deploy.sh: simple one-click deployment script
+   492→- Committed all changes
+   493→- Verified all APIs working: auth, products, shops, categories, login for all 4 roles
+   494→
+   495→Stage Summary:
+   496→- Project is fully ready for Vercel deployment
+   497→- SQLite for local dev, PostgreSQL for Vercel (auto-swapped in build)
+   498→- Chat falls back to HTTP polling on Vercel (Socket.io not available in serverless)
+   499→- Both Vercel and Netlify CLI installed but require user login to deploy
+   500→- User needs to: 1) vercel login, 2) set up PostgreSQL DB, 3) vercel --prod
+   501→
+   502→---
+   503→Task ID: 4b
+   504→Agent: security-fix-critical
+   505→Task: Fix CRITICAL auth and payment vulnerabilities
+   506→
+   507→Work Log:
+   508→- C-1: Added authorization checks for paymentStatus (only admin or assigned shipper can update) and shipperId (only admin or shop owner can assign, validated shipper role and active status) in orders/[id]/route.ts
+   509→- C-2: Removed hardcoded cookie secret fallback, threw error if COOKIE_SECRET not set, generated strong random secret and added to .env.local, replaced string comparison with timingSafeEqual for HMAC verification, added Secure flag to clearAuthCookie in production, changed SameSite from Lax to Strict for auth cookies
+   510→- H-3: Replaced Math.random() password generation with crypto.randomBytes(32).toString('base64url') in Google OAuth route
+   511→- H-5: Added inStock check for all cart items before order creation in orders/route.ts, returns 400 with product names if any items are out of stock
+   512→- H-7: Added self-demotion prevention (admin cannot change own role or deactivate own account) and last-admin demotion protection in admin/users/[id]/route.ts
+   513→- M-9: Added in-memory failed login attempt tracking with account lockout after 5 failed attempts for 15 minutes, also sets isActive=false on the user in database, resets on successful login, with periodic cleanup of stale entries
+   514→
+   515→Stage Summary:
+   516→- All 6 security vulnerabilities (2 CRITICAL, 2 HIGH, 1 MEDIUM, plus M-3/L-1 bundled with C-2) are fixed
+   517→- ESLint passes cleanly with no errors
+   518→- Dev server compiles successfully with no errors
+   519→- No database schema changes required (in-memory tracker used for lockout)
+   520→
+   521→---
+   522→Task ID: 4c
+   523→Agent: security-fix-chat
+   524→Task: Fix CRITICAL chat service authentication and authorization
+   525→
+   526→Work Log:
+   527→- Read worklog.md to understand project progress and prior security fixes
+   528→- Read chat service index.ts and main app auth.ts to understand cookie signing format (HMAC-SHA256 with COOKIE_SECRET, format: `value.signature`)
+   529→- Implemented cookie-based authentication: on socket connection, extract and verify signed userId cookie from socket.handshake.headers.cookie using HMAC-SHA256 verification
+   530→- Removed the insecure `authenticate` socket event that accepted any userId without verification
+   531→- Added socket middleware (io.use) that verifies auth cookie before allowing connection; rejects unauthenticated sockets
+   532→- For all socket events (join-conversation, send-message, mark-read, typing), use verified userId from the connection instead of client-provided data
+   533→- Added participant verification for join-conversation, send-message, mark-read, and typing events using `isUserParticipant` prepared statement
+   534→- For send-message: use verified userId as senderId, removed senderId from client payload
+   535→- Fixed CORS: changed `origin: "*"` to configurable `process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000']` with `credentials: true`
+   536→- Added per-user rate limiting for messages (20 messages/minute window) using `checkSocketRateLimit()`
+   537→- Fixed hardcoded DB path: changed to `process.env.CHAT_DB_PATH || "/home/z/my-project/db/custom.db"`
+   538→- Updated ChatPanel.tsx frontend: added `withCredentials: true` to socket.io client, removed `authenticate` emit, removed `senderId` from send-message, removed `userId` from mark-read and typing events
+   539→- Verified chat service starts successfully on port 3003
+   540→- ESLint passes cleanly
+   541→
+   542→Stage Summary:
+   543→- C-3/C-4 FIXED: Chat service now uses cookie-based authentication via HMAC-SHA256 signed cookie verification; no more unauthenticated socket events
+   544→- H-2 FIXED: CORS restricted to configurable allowed origins instead of wildcard
+   545→- H-8 FIXED: Per-user rate limiting (20 msgs/min) on send-message events
+   546→- M-10 FIXED: Database path is now configurable via CHAT_DB_PATH env variable
+   547→- Frontend ChatPanel.tsx updated to work with new auth model (withCredentials, removed client-provided auth data)
+   548→- Chat service running on port 3003, ESLint passes
+   549→

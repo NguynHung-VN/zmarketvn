@@ -1,0 +1,733 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect } from 'react'
+     4→import { useAppStore } from '@/lib/store'
+     5→import { formatPrice, getStatusLabel, getStatusColor, formatDateTime } from '@/lib/format'
+     6→import { Button } from '@/components/ui/button'
+     7→import { Input } from '@/components/ui/input'
+     8→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     9→import { Badge } from '@/components/ui/badge'
+    10→import { Skeleton } from '@/components/ui/skeleton'
+    11→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    12→import { Separator } from '@/components/ui/separator'
+    13→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+    14→import { Textarea } from '@/components/ui/textarea'
+    15→import { Label } from '@/components/ui/label'
+    16→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+    17→import { Switch } from '@/components/ui/switch'
+    18→import { toast } from 'sonner'
+    19→import {
+    20→  LayoutDashboard, Package, ClipboardList, Store,
+    21→  Plus, Edit, Trash2, Loader2, DollarSign, ShoppingBag
+    22→} from 'lucide-react'
+    23→
+    24→interface SellerProduct {
+    25→  id: string
+    26→  name: string
+    27→  description?: string | null
+    28→  price: number
+    29→  originalPrice?: number | null
+    30→  image?: string | null
+    31→  unit: string
+    32→  inStock: boolean
+    33→  rating: number
+    34→  soldCount: number
+    35→  categoryId: string
+    36→  category: { id: string; name: string; slug: string }
+    37→  _count: { orderItems: number; reviews: number }
+    38→}
+    39→
+    40→interface Category {
+    41→  id: string
+    42→  name: string
+    43→  slug: string
+    44→}
+    45→
+    46→interface SellerOrder {
+    47→  id: string
+    48→  status: string
+    49→  total: number
+    50→  shippingFee: number
+    51→  address: string
+    52→  phone: string
+    53→  paymentMethod: string
+    54→  paymentStatus: string
+    55→  createdAt: string
+    56→  buyer: { id: string; name: string; phone: string; avatar?: string | null }
+    57→  shipper?: { id: string; name: string; phone: string } | null
+    58→  items: {
+    59→    id: string
+    60→    quantity: number
+    61→    price: number
+    62→    product: { id: string; name: string; image?: string | null; unit: string }
+    63→  }[]
+    64→}
+    65→
+    66→interface ShopInfo {
+    67→  id: string
+    68→  name: string
+    69→  description?: string | null
+    70→  image?: string | null
+    71→  address: string
+    72→  phone?: string | null
+    73→  rating: number
+    74→}
+    75→
+    76→const sellerTabs = [
+    77→  { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
+    78→  { id: 'products', label: 'Sản phẩm', icon: Package },
+    79→  { id: 'orders', label: 'Đơn hàng', icon: ClipboardList },
+    80→  { id: 'shop', label: 'Sạp hàng', icon: Store },
+    81→]
+    82→
+    83→export default function SellerDashboard() {
+    84→  const { user, currentTab, setTab } = useAppStore()
+    85→  const activeTab = currentTab || 'overview'
+    86→
+    87→  const handleTabChange = (tab: string) => {
+    88→    setTab(tab)
+    89→  }
+    90→
+    91→  return (
+    92→    <div className="min-h-screen flex flex-col bg-muted/30">
+    93→      <header className="bg-white border-b sticky top-0 z-50">
+    94→        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+    95→          <div className="flex items-center gap-3">
+    96→            <h1 className="text-xl font-black text-green-700">Z-MARKET</h1>
+    97→            <Badge variant="secondary" className="bg-amber-100 text-amber-700">Tiểu thương</Badge>
+    98→          </div>
+    99→          <div className="flex items-center gap-3">
+   100→            <span className="text-sm text-muted-foreground hidden sm:block">{user?.name}</span>
+   101→            <Button variant="ghost" size="sm" onClick={() => useAppStore.getState().logout()}>
+   102→              Đăng xuất
+   103→            </Button>
+   104→          </div>
+   105→        </div>
+   106→      </header>
+   107→
+   108→      <div className="flex-1 flex">
+   109→        <aside className="hidden md:flex w-56 bg-white border-r flex-col">
+   110→          <nav className="p-3 space-y-1">
+   111→            {sellerTabs.map((tab) => (
+   112→              <button
+   113→                key={tab.id}
+   114→                onClick={() => handleTabChange(tab.id)}
+   115→                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+   116→                  activeTab === tab.id
+   117→                    ? 'bg-amber-50 text-amber-700'
+   118→                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+   119→                }`}
+   120→              >
+   121→                <tab.icon className="h-4 w-4" />
+   122→                {tab.label}
+   123→              </button>
+   124→            ))}
+   125→          </nav>
+   126→        </aside>
+   127→
+   128→        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t z-50">
+   129→          <div className="flex justify-around">
+   130→            {sellerTabs.map((tab) => (
+   131→              <button
+   132→                key={tab.id}
+   133→                onClick={() => handleTabChange(tab.id)}
+   134→                className={`flex flex-col items-center py-2 px-3 text-xs ${
+   135→                  activeTab === tab.id ? 'text-amber-700' : 'text-muted-foreground'
+   136→                }`}
+   137→              >
+   138→                <tab.icon className="h-5 w-5" />
+   139→                {tab.label}
+   140→              </button>
+   141→            ))}
+   142→          </div>
+   143→        </div>
+   144→
+   145→        <main className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
+   146→          {activeTab === 'overview' && <OverviewTab />}
+   147→          {activeTab === 'products' && <ProductsTab />}
+   148→          {activeTab === 'orders' && <OrdersTab />}
+   149→          {activeTab === 'shop' && <ShopTab />}
+   150→        </main>
+   151→      </div>
+   152→
+   153→      <footer className="bg-gray-900 text-gray-400 mt-auto">
+   154→        <div className="max-w-6xl mx-auto px-4 py-4 text-center text-sm">
+   155→          © 2024 Z-Market — Chợ Số Việt Nam
+   156→        </div>
+   157→      </footer>
+   158→    </div>
+   159→  )
+   160→}
+   161→
+   162→// ==================== OVERVIEW TAB ====================
+   163→function OverviewTab() {
+   164→  const [products, setProducts] = useState<SellerProduct[]>([])
+   165→  const [orders, setOrders] = useState<SellerOrder[]>([])
+   166→  const [loading, setLoading] = useState(true)
+   167→
+   168→  useEffect(() => {
+   169→    let cancelled = false
+   170→    const fetchData = async () => {
+   171→      setLoading(true)
+   172→      try {
+   173→        const [prodRes, orderRes] = await Promise.all([
+   174→          fetch('/api/seller/products'),
+   175→          fetch('/api/seller/orders'),
+   176→        ])
+   177→        if (prodRes.ok && !cancelled) {
+   178→          const data = await prodRes.json()
+   179→          setProducts(data.products || [])
+   180→        }
+   181→        if (orderRes.ok && !cancelled) {
+   182→          const data = await orderRes.json()
+   183→          setOrders(data.orders || [])
+   184→        }
+   185→      } catch { /* ignore */ }
+   186→      if (!cancelled) setLoading(false)
+   187→    }
+   188→    fetchData()
+   189→    return () => { cancelled = true }
+   190→  }, [])
+   191→
+   192→  const totalRevenue = orders.filter(o => o.status === 'DELIVERED').reduce((sum, o) => sum + o.total, 0)
+   193→  const pendingOrders = orders.filter(o => o.status === 'PENDING').length
+   194→
+   195→  if (loading) {
+   196→    return (
+   197→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   198→        {Array.from({ length: 3 }).map((_, i) => (
+   199→          <Card key={i}><CardContent className="p-6"><Skeleton className="h-20 w-full" /></CardContent></Card>
+   200→        ))}
+   201→      </div>
+   202→    )
+   203→  }
+   204→
+   205→  return (
+   206→    <div>
+   207→      <h2 className="text-xl font-bold mb-4">Tổng quan</h2>
+   208→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+   209→        <Card>
+   210→          <CardContent className="p-6">
+   211→            <div className="flex items-center gap-3">
+   212→              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+   213→                <Package className="h-5 w-5 text-amber-600" />
+   214→              </div>
+   215→              <div>
+   216→                <p className="text-sm text-muted-foreground">Sản phẩm</p>
+   217→                <p className="text-2xl font-bold">{products.length}</p>
+   218→              </div>
+   219→            </div>
+   220→          </CardContent>
+   221→        </Card>
+   222→        <Card>
+   223→          <CardContent className="p-6">
+   224→            <div className="flex items-center gap-3">
+   225→              <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+   226→                <ShoppingBag className="h-5 w-5 text-blue-600" />
+   227→              </div>
+   228→              <div>
+   229→                <p className="text-sm text-muted-foreground">Đơn hàng</p>
+   230→                <p className="text-2xl font-bold">{orders.length}</p>
+   231→                {pendingOrders > 0 && (
+   232→                  <p className="text-xs text-amber-600">{pendingOrders} chờ xác nhận</p>
+   233→                )}
+   234→              </div>
+   235→            </div>
+   236→          </CardContent>
+   237→        </Card>
+   238→        <Card>
+   239→          <CardContent className="p-6">
+   240→            <div className="flex items-center gap-3">
+   241→              <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
+   242→                <DollarSign className="h-5 w-5 text-green-600" />
+   243→              </div>
+   244→              <div>
+   245→                <p className="text-sm text-muted-foreground">Doanh thu</p>
+   246→                <p className="text-2xl font-bold">{formatPrice(totalRevenue)}</p>
+   247→              </div>
+   248→            </div>
+   249→          </CardContent>
+   250→        </Card>
+   251→      </div>
+   252→
+   253→      <Card>
+   254→        <CardHeader>
+   255→          <CardTitle className="text-base">Đơn hàng gần đây</CardTitle>
+   256→        </CardHeader>
+   257→        <CardContent>
+   258→          {orders.length === 0 ? (
+   259→            <p className="text-sm text-muted-foreground text-center py-4">Chưa có đơn hàng</p>
+   260→          ) : (
+   261→            <div className="space-y-3 max-h-96 overflow-y-auto custom-scrollbar">
+   262→              {orders.slice(0, 10).map((order) => (
+   263→                <div key={order.id} className="flex items-center justify-between py-2 border-b last:border-0">
+   264→                  <div>
+   265→                    <p className="text-sm font-medium">Đơn #{order.id.slice(-8)}</p>
+   266→                    <p className="text-xs text-muted-foreground">{order.buyer.name} · {formatDateTime(order.createdAt)}</p>
+   267→                  </div>
+   268→                  <div className="flex items-center gap-2">
+   269→                    <span className="text-sm font-medium">{formatPrice(order.total)}</span>
+   270→                    <Badge className={`${getStatusColor(order.status)} text-xs`}>
+   271→                      {getStatusLabel(order.status)}
+   272→                    </Badge>
+   273→                  </div>
+   274→                </div>
+   275→              ))}
+   276→            </div>
+   277→          )}
+   278→        </CardContent>
+   279→      </Card>
+   280→    </div>
+   281→  )
+   282→}
+   283→
+   284→// ==================== PRODUCTS TAB ====================
+   285→function ProductsTab() {
+   286→  const [products, setProducts] = useState<SellerProduct[]>([])
+   287→  const [categories, setCategories] = useState<Category[]>([])
+   288→  const [loading, setLoading] = useState(true)
+   289→  const [showAddDialog, setShowAddDialog] = useState(false)
+   290→  const [editProduct, setEditProduct] = useState<SellerProduct | null>(null)
+   291→  const [refreshKey, setRefreshKey] = useState(0)
+   292→
+   293→  useEffect(() => {
+   294→    let cancelled = false
+   295→    const fetchData = async () => {
+   296→      setLoading(true)
+   297→      try {
+   298→        const [prodRes, catRes] = await Promise.all([
+   299→          fetch('/api/seller/products'),
+   300→          fetch('/api/categories'),
+   301→        ])
+   302→        if (prodRes.ok && !cancelled) {
+   303→          const data = await prodRes.json()
+   304→          setProducts(data.products || [])
+   305→        }
+   306→        if (catRes.ok && !cancelled) {
+   307→          const data = await catRes.json()
+   308→          setCategories(data.categories)
+   309→        }
+   310→      } catch { /* ignore */ }
+   311→      if (!cancelled) setLoading(false)
+   312→    }
+   313→    fetchData()
+   314→    return () => { cancelled = true }
+   315→  }, [refreshKey])
+   316→
+   317→  const refresh = () => setRefreshKey(k => k + 1)
+   318→
+   319→  const handleDelete = async (id: string) => {
+   320→    if (!confirm('Bạn có chắc muốn xóa sản phẩm này?')) return
+   321→    try {
+   322→      const res = await fetch(`/api/seller/products/${id}`, { method: 'DELETE' })
+   323→      if (res.ok) {
+   324→        toast.success('Đã xóa sản phẩm')
+   325→        refresh()
+   326→      } else {
+   327→        const data = await res.json()
+   328→        toast.error(data.error || 'Xóa thất bại')
+   329→      }
+   330→    } catch { toast.error('Lỗi server') }
+   331→  }
+   332→
+   333→  return (
+   334→    <div>
+   335→      <div className="flex items-center justify-between mb-4">
+   336→        <h2 className="text-xl font-bold">Sản phẩm</h2>
+   337→        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+   338→          <DialogTrigger asChild>
+   339→            <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Thêm sản phẩm</Button>
+   340→          </DialogTrigger>
+   341→          <DialogContent>
+   342→            <DialogHeader>
+   343→              <DialogTitle>Thêm sản phẩm mới</DialogTitle>
+   344→            </DialogHeader>
+   345→            <ProductForm
+   346→              categories={categories}
+   347→              onSuccess={() => { setShowAddDialog(false); refresh() }}
+   348→            />
+   349→          </DialogContent>
+   350→        </Dialog>
+   351→      </div>
+   352→
+   353→      {loading ? (
+   354→        <div className="space-y-3">
+   355→          {Array.from({ length: 5 }).map((_, i) => (
+   356→            <Skeleton key={i} className="h-16 w-full" />
+   357→          ))}
+   358→        </div>
+   359→      ) : products.length === 0 ? (
+   360→        <div className="text-center py-16">
+   361→          <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+   362→          <h3 className="text-lg font-semibold">Chưa có sản phẩm</h3>
+   363→          <p className="text-muted-foreground">Thêm sản phẩm đầu tiên cho sạp hàng của bạn</p>
+   364→        </div>
+   365→      ) : (
+   366→        <Card>
+   367→          <div className="overflow-x-auto">
+   368→            <Table>
+   369→              <TableHeader>
+   370→                <TableRow>
+   371→                  <TableHead>Sản phẩm</TableHead>
+   372→                  <TableHead>Danh mục</TableHead>
+   373→                  <TableHead>Giá</TableHead>
+   374→                  <TableHead>Tồn kho</TableHead>
+   375→                  <TableHead>Đã bán</TableHead>
+   376→                  <TableHead className="text-right">Thao tác</TableHead>
+   377→                </TableRow>
+   378→              </TableHeader>
+   379→              <TableBody>
+   380→                {products.map((product) => (
+   381→                  <TableRow key={product.id}>
+   382→                    <TableCell className="font-medium">{product.name}</TableCell>
+   383→                    <TableCell>{product.category.name}</TableCell>
+   384→                    <TableCell>{formatPrice(product.price)}</TableCell>
+   385→                    <TableCell>
+   386→                      <Badge variant={product.inStock ? 'default' : 'destructive'} className="text-xs">
+   387→                        {product.inStock ? 'Còn hàng' : 'Hết hàng'}
+   388→                      </Badge>
+   389→                    </TableCell>
+   390→                    <TableCell>{product.soldCount}</TableCell>
+   391→                    <TableCell className="text-right">
+   392→                      <div className="flex items-center justify-end gap-1">
+   393→                        <Button variant="ghost" size="sm" onClick={() => setEditProduct(product)}>
+   394→                          <Edit className="h-4 w-4" />
+   395→                        </Button>
+   396→                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={() => handleDelete(product.id)}>
+   397→                          <Trash2 className="h-4 w-4" />
+   398→                        </Button>
+   399→                      </div>
+   400→                    </TableCell>
+   401→                  </TableRow>
+   402→                ))}
+   403→              </TableBody>
+   404→            </Table>
+   405→          </div>
+   406→        </Card>
+   407→      )}
+   408→
+   409→      {/* Edit Dialog */}
+   410→      <Dialog open={!!editProduct} onOpenChange={(open) => { if (!open) setEditProduct(null) }}>
+   411→        <DialogContent>
+   412→          <DialogHeader>
+   413→            <DialogTitle>Chỉnh sửa sản phẩm</DialogTitle>
+   414→          </DialogHeader>
+   415→          {editProduct && (
+   416→            <ProductForm
+   417→              product={editProduct}
+   418→              categories={categories}
+   419→              onSuccess={() => { setEditProduct(null); refresh() }}
+   420→            />
+   421→          )}
+   422→        </DialogContent>
+   423→      </Dialog>
+   424→    </div>
+   425→  )
+   426→}
+   427→
+   428→// Product Form Component
+   429→function ProductForm({ product, categories, onSuccess }: {
+   430→  product?: SellerProduct | null
+   431→  categories: Category[]
+   432→  onSuccess: () => void
+   433→}) {
+   434→  const [name, setName] = useState(product?.name || '')
+   435→  const [description, setDescription] = useState(product?.description || '')
+   436→  const [price, setPrice] = useState(product?.price?.toString() || '')
+   437→  const [originalPrice, setOriginalPrice] = useState(product?.originalPrice?.toString() || '')
+   438→  const [unit, setUnit] = useState(product?.unit || 'kg')
+   439→  const [categoryId, setCategoryId] = useState(product?.categoryId || '')
+   440→  const [inStock, setInStock] = useState(product?.inStock ?? true)
+   441→  const [saving, setSaving] = useState(false)
+   442→
+   443→  const handleSubmit = async (e: React.FormEvent) => {
+   444→    e.preventDefault()
+   445→    setSaving(true)
+   446→    try {
+   447→      const body = {
+   448→        name,
+   449→        description: description || undefined,
+   450→        price: parseFloat(price),
+   451→        originalPrice: originalPrice ? parseFloat(originalPrice) : undefined,
+   452→        unit,
+   453→        categoryId,
+   454→        inStock,
+   455→      }
+   456→      const url = product ? `/api/seller/products/${product.id}` : '/api/seller/products'
+   457→      const method = product ? 'PUT' : 'POST'
+   458→      const res = await fetch(url, {
+   459→        method,
+   460→        headers: { 'Content-Type': 'application/json' },
+   461→        body: JSON.stringify(body),
+   462→      })
+   463→      const data = await res.json()
+   464→      if (!res.ok) throw new Error(data.error || 'Lỗi')
+   465→      toast.success(product ? 'Đã cập nhật sản phẩm' : 'Đã tạo sản phẩm')
+   466→      onSuccess()
+   467→    } catch (error) {
+   468→      toast.error(error instanceof Error ? error.message : 'Lỗi')
+   469→    }
+   470→    setSaving(false)
+   471→  }
+   472→
+   473→  return (
+   474→    <form onSubmit={handleSubmit} className="space-y-4">
+   475→      <div className="space-y-2">
+   476→        <Label>Tên sản phẩm *</Label>
+   477→        <Input value={name} onChange={(e) => setName(e.target.value)} required />
+   478→      </div>
+   479→      <div className="space-y-2">
+   480→        <Label>Mô tả</Label>
+   481→        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+   482→      </div>
+   483→      <div className="grid grid-cols-2 gap-3">
+   484→        <div className="space-y-2">
+   485→          <Label>Giá bán *</Label>
+   486→          <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} required min="0" step="1000" />
+   487→        </div>
+   488→        <div className="space-y-2">
+   489→          <Label>Giá gốc</Label>
+   490→          <Input type="number" value={originalPrice} onChange={(e) => setOriginalPrice(e.target.value)} min="0" step="1000" />
+   491→        </div>
+   492→      </div>
+   493→      <div className="grid grid-cols-2 gap-3">
+   494→        <div className="space-y-2">
+   495→          <Label>Đơn vị</Label>
+   496→          <Input value={unit} onChange={(e) => setUnit(e.target.value)} />
+   497→        </div>
+   498→        <div className="space-y-2">
+   499→          <Label>Danh mục *</Label>
+   500→          <Select value={categoryId} onValueChange={setCategoryId}>
+   501→            <SelectTrigger><SelectValue placeholder="Chọn danh mục" /></SelectTrigger>
+   502→            <SelectContent>
+   503→              {categories.map((cat) => (
+   504→                <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+   505→              ))}
+   506→            </SelectContent>
+   507→          </Select>
+   508→        </div>
+   509→      </div>
+   510→      <div className="flex items-center gap-2">
+   511→        <Switch checked={inStock} onCheckedChange={setInStock} />
+   512→        <Label>Còn hàng</Label>
+   513→      </div>
+   514→      <Button type="submit" className="w-full" disabled={saving}>
+   515→        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+   516→        {product ? 'Cập nhật' : 'Tạo sản phẩm'}
+   517→      </Button>
+   518→    </form>
+   519→  )
+   520→}
+   521→
+   522→// ==================== ORDERS TAB ====================
+   523→function OrdersTab() {
+   524→  const [orders, setOrders] = useState<SellerOrder[]>([])
+   525→  const [loading, setLoading] = useState(true)
+   526→  const [statusFilter, setStatusFilter] = useState('all')
+   527→
+   528→  useEffect(() => {
+   529→    let cancelled = false
+   530→    const fetchOrders = async () => {
+   531→      setLoading(true)
+   532→      try {
+   533→        const params = new URLSearchParams()
+   534→        if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
+   535→        const res = await fetch(`/api/seller/orders?${params}`)
+   536→        if (res.ok && !cancelled) {
+   537→          const data = await res.json()
+   538→          setOrders(data.orders || [])
+   539→        }
+   540→      } catch { /* ignore */ }
+   541→      if (!cancelled) setLoading(false)
+   542→    }
+   543→    fetchOrders()
+   544→    return () => { cancelled = true }
+   545→  }, [statusFilter])
+   546→
+   547→  const handleUpdateStatus = async (orderId: string, status: string) => {
+   548→    try {
+   549→      const res = await fetch(`/api/seller/orders/${orderId}`, {
+   550→        method: 'PUT',
+   551→        headers: { 'Content-Type': 'application/json' },
+   552→        body: JSON.stringify({ status }),
+   553→      })
+   554→      const data = await res.json()
+   555→      if (!res.ok) throw new Error(data.error)
+   556→      toast.success('Đã cập nhật trạng thái')
+   557→      // Refresh orders
+   558→      const params = new URLSearchParams()
+   559→      if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
+   560→      const refreshRes = await fetch(`/api/seller/orders?${params}`)
+   561→      if (refreshRes.ok) {
+   562→        const refreshData = await refreshRes.json()
+   563→        setOrders(refreshData.orders || [])
+   564→      }
+   565→    } catch (error) {
+   566→      toast.error(error instanceof Error ? error.message : 'Lỗi')
+   567→    }
+   568→  }
+   569→
+   570→  return (
+   571→    <div>
+   572→      <div className="flex items-center justify-between mb-4">
+   573→        <h2 className="text-xl font-bold">Đơn hàng</h2>
+   574→        <Select value={statusFilter} onValueChange={setStatusFilter}>
+   575→          <SelectTrigger className="w-44">
+   576→            <SelectValue placeholder="Lọc trạng thái" />
+   577→          </SelectTrigger>
+   578→          <SelectContent>
+   579→            <SelectItem value="all">Tất cả</SelectItem>
+   580→            <SelectItem value="PENDING">Chờ xác nhận</SelectItem>
+   581→            <SelectItem value="CONFIRMED">Đã xác nhận</SelectItem>
+   582→            <SelectItem value="PREPARING">Đang chuẩn bị</SelectItem>
+   583→            <SelectItem value="SHIPPING">Đang giao</SelectItem>
+   584→            <SelectItem value="DELIVERED">Đã giao</SelectItem>
+   585→            <SelectItem value="CANCELLED">Đã hủy</SelectItem>
+   586→          </SelectContent>
+   587→        </Select>
+   588→      </div>
+   589→
+   590→      {loading ? (
+   591→        <div className="space-y-4">
+   592→          {Array.from({ length: 3 }).map((_, i) => (
+   593→            <Card key={i}><CardContent className="p-4"><Skeleton className="h-24 w-full" /></CardContent></Card>
+   594→          ))}
+   595→        </div>
+   596→      ) : orders.length === 0 ? (
+   597→        <div className="text-center py-16">
+   598→          <ClipboardList className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+   599→          <h3 className="text-lg font-semibold">Chưa có đơn hàng</h3>
+   600→        </div>
+   601→      ) : (
+   602→        <div className="space-y-4">
+   603→          {orders.map((order) => (
+   604→            <Card key={order.id}>
+   605→              <CardContent className="p-4">
+   606→                <div className="flex items-start justify-between mb-3">
+   607→                  <div>
+   608→                    <p className="font-semibold text-sm">Đơn #{order.id.slice(-8)}</p>
+   609→                    <p className="text-xs text-muted-foreground">
+   610→                      Khách: {order.buyer.name} · {order.buyer.phone}
+   611→                    </p>
+   612→                    <p className="text-xs text-muted-foreground">{formatDateTime(order.createdAt)}</p>
+   613→                  </div>
+   614→                  <Badge className={`${getStatusColor(order.status)} text-xs`}>
+   615→                    {getStatusLabel(order.status)}
+   616→                  </Badge>
+   617→                </div>
+   618→
+   619→                <div className="space-y-1 mb-3 text-sm">
+   620→                  {order.items.map((item) => (
+   621→                    <div key={item.id} className="flex justify-between">
+   622→                      <span>{item.product.name} x{item.quantity}</span>
+   623→                      <span>{formatPrice(item.price * item.quantity)}</span>
+   624→                    </div>
+   625→                  ))}
+   626→                  <Separator className="my-1" />
+   627→                  <div className="flex justify-between font-bold">
+   628→                    <span>Tổng</span>
+   629→                    <span className="text-green-700">{formatPrice(order.total + order.shippingFee)}</span>
+   630→                  </div>
+   631→                </div>
+   632→
+   633→                <div className="text-xs text-muted-foreground mb-3">
+   634→                  📍 {order.address} · 📞 {order.phone}
+   635→                </div>
+   636→
+   637→                <div className="flex gap-2">
+   638→                  {order.status === 'PENDING' && (
+   639→                    <>
+   640→                      <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'CONFIRMED')}>
+   641→                        Xác nhận
+   642→                      </Button>
+   643→                      <Button size="sm" variant="destructive" onClick={() => handleUpdateStatus(order.id, 'CANCELLED')}>
+   644→                        Hủy đơn
+   645→                      </Button>
+   646→                    </>
+   647→                  )}
+   648→                  {order.status === 'CONFIRMED' && (
+   649→                    <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'PREPARING')}>
+   650→                      Chuẩn bị hàng
+   651→                    </Button>
+   652→                  )}
+   653→                </div>
+   654→              </CardContent>
+   655→            </Card>
+   656→          ))}
+   657→        </div>
+   658→      )}
+   659→    </div>
+   660→  )
+   661→}
+   662→
+   663→// ==================== SHOP TAB ====================
+   664→function ShopTab() {
+   665→  const { user } = useAppStore()
+   666→  const [shop, setShop] = useState<ShopInfo | null>(null)
+   667→  const [loading, setLoading] = useState(true)
+   668→
+   669→  useEffect(() => {
+   670→    let cancelled = false
+   671→    const fetchShop = async () => {
+   672→      setLoading(true)
+   673→      try {
+   674→        const res = await fetch('/api/shops')
+   675→        if (res.ok && !cancelled) {
+   676→          const data = await res.json()
+   677→          const myShop = data.shops?.find((s: ShopInfo & { owner: { id: string } }) => s.owner?.id === user?.id)
+   678→          if (myShop && !cancelled) setShop(myShop)
+   679→        }
+   680→      } catch { /* ignore */ }
+   681→      if (!cancelled) setLoading(false)
+   682→    }
+   683→    fetchShop()
+   684→    return () => { cancelled = true }
+   685→  }, [user])
+   686→
+   687→  if (loading) {
+   688→    return <Card><CardContent className="p-6"><Skeleton className="h-40 w-full" /></CardContent></Card>
+   689→  }
+   690→
+   691→  if (!shop) {
+   692→    return (
+   693→      <div className="text-center py-16">
+   694→        <Store className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+   695→        <h3 className="text-lg font-semibold">Chưa có sạp hàng</h3>
+   696→      </div>
+   697→    )
+   698→  }
+   699→
+   700→  return (
+   701→    <div className="max-w-lg">
+   702→      <h2 className="text-xl font-bold mb-4">Thông tin sạp hàng</h2>
+   703→      <Card>
+   704→        <CardContent className="p-6">
+   705→          <div className="flex items-center gap-4 mb-6">
+   706→            <div className="w-16 h-16 rounded-xl bg-amber-100 flex items-center justify-center text-2xl">
+   707→              🏪
+   708→            </div>
+   709→            <div>
+   710→              <h3 className="text-lg font-semibold">{shop.name}</h3>
+   711→              <Badge className="bg-amber-100 text-amber-700">⭐ {shop.rating.toFixed(1)}</Badge>
+   712→            </div>
+   713→          </div>
+   714→          <div className="space-y-3">
+   715→            <div>
+   716→              <p className="text-xs text-muted-foreground">Mô tả</p>
+   717→              <p className="text-sm">{shop.description || 'Chưa có mô tả'}</p>
+   718→            </div>
+   719→            <div>
+   720→              <p className="text-xs text-muted-foreground">Địa chỉ</p>
+   721→              <p className="text-sm">{shop.address}</p>
+   722→            </div>
+   723→            <div>
+   724→              <p className="text-xs text-muted-foreground">Số điện thoại</p>
+   725→              <p className="text-sm">{shop.phone || 'Chưa cập nhật'}</p>
+   726→            </div>
+   727→          </div>
+   728→        </CardContent>
+   729→      </Card>
+   730→    </div>
+   731→  )
+   732→}
+   733→

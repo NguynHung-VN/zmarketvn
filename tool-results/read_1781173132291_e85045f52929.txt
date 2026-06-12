@@ -1,0 +1,766 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import { useAppStore } from '@/lib/store'
+     5→import { formatPrice, getStatusLabel, getStatusColor, getPaymentStatusLabel, getPaymentStatusColor, getPaymentMethodLabel, formatDateTime } from '@/lib/format'
+     6→import { Button } from '@/components/ui/button'
+     7→import { Input } from '@/components/ui/input'
+     8→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     9→import { Badge } from '@/components/ui/badge'
+    10→import { Skeleton } from '@/components/ui/skeleton'
+    11→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    12→import { Separator } from '@/components/ui/separator'
+    13→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+    14→import { Textarea } from '@/components/ui/textarea'
+    15→import { Label } from '@/components/ui/label'
+    16→import { toast } from 'sonner'
+    17→import {
+    18→  ShoppingBag, Store, ShoppingCart, ClipboardList, User,
+    19→  Search, Plus, Minus, Trash2, Star, MapPin, Phone,
+    20→  Loader2, Package, ChevronLeft, ChevronRight
+    21→} from 'lucide-react'
+    22→
+    23→// Types
+    24→interface Product {
+    25→  id: string
+    26→  name: string
+    27→  description?: string | null
+    28→  price: number
+    29→  originalPrice?: number | null
+    30→  image?: string | null
+    31→  unit: string
+    32→  inStock: boolean
+    33→  rating: number
+    34→  soldCount: number
+    35→  shopId: string
+    36→  categoryId: string
+    37→  shop: { id: string; name: string; image?: string | null; rating: number }
+    38→  category: { id: string; name: string; slug: string }
+    39→}
+    40→
+    41→interface Category {
+    42→  id: string
+    43→  name: string
+    44→  icon?: string | null
+    45→  slug: string
+    46→  _count: { products: number }
+    47→}
+    48→
+    49→interface Shop {
+    50→  id: string
+    51→  name: string
+    52→  description?: string | null
+    53→  image?: string | null
+    54→  address: string
+    55→  phone?: string | null
+    56→  rating: number
+    57→  isActive: boolean
+    58→  owner: { id: string; name: string }
+    59→  _count: { products: number }
+    60→}
+    61→
+    62→interface OrderItem {
+    63→  id: string
+    64→  quantity: number
+    65→  price: number
+    66→  productId: string
+    67→  product: { id: string; name: string; image?: string | null; unit: string }
+    68→}
+    69→
+    70→interface Order {
+    71→  id: string
+    72→  status: string
+    73→  total: number
+    74→  shippingFee: number
+    75→  address: string
+    76→  phone: string
+    77→  note?: string | null
+    78→  paymentMethod: string
+    79→  paymentStatus: string
+    80→  buyerId: string
+    81→  shopId: string
+    82→  shipperId?: string | null
+    83→  createdAt: string
+    84→  updatedAt: string
+    85→  shop: { id: string; name: string; image?: string | null; address?: string | null }
+    86→  shipper?: { id: string; name: string; phone: string } | null
+    87→  items: OrderItem[]
+    88→}
+    89→
+    90→const buyerTabs = [
+    91→  { id: 'products', label: 'Sản phẩm', icon: ShoppingBag },
+    92→  { id: 'shops', label: 'Sạp hàng', icon: Store },
+    93→  { id: 'cart', label: 'Giỏ hàng', icon: ShoppingCart },
+    94→  { id: 'orders', label: 'Đơn hàng', icon: ClipboardList },
+    95→  { id: 'profile', label: 'Hồ sơ', icon: User },
+    96→]
+    97→
+    98→export default function BuyerDashboard() {
+    99→  const { user, currentTab, setTab, cart, cartTotal, fetchCart, addToCart, updateCartItem, removeCartItem } = useAppStore()
+   100→  const [activeTab, setActiveTab] = useState('products')
+   101→
+   102→  useEffect(() => {
+   103→    if (currentTab) setActiveTab(currentTab)
+   104→  }, [currentTab])
+   105→
+   106→  const handleTabChange = (tab: string) => {
+   107→    setActiveTab(tab)
+   108→    setTab(tab)
+   109→  }
+   110→
+   111→  return (
+   112→    <div className="min-h-screen flex flex-col bg-muted/30">
+   113→      {/* Header */}
+   114→      <header className="bg-white border-b sticky top-0 z-50">
+   115→        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+   116→          <div className="flex items-center gap-3">
+   117→            <h1 className="text-xl font-black text-green-700">Z-MARKET</h1>
+   118→            <Badge variant="secondary" className="bg-green-100 text-green-700">Người mua</Badge>
+   119→          </div>
+   120→          <div className="flex items-center gap-3">
+   121→            <span className="text-sm text-muted-foreground hidden sm:block">{user?.name}</span>
+   122→            <Button variant="ghost" size="sm" onClick={() => useAppStore.getState().logout()}>
+   123→              Đăng xuất
+   124→            </Button>
+   125→          </div>
+   126→        </div>
+   127→      </header>
+   128→
+   129→      <div className="flex-1 flex">
+   130→        {/* Sidebar */}
+   131→        <aside className="hidden md:flex w-56 bg-white border-r flex-col">
+   132→          <nav className="p-3 space-y-1">
+   133→            {buyerTabs.map((tab) => (
+   134→              <button
+   135→                key={tab.id}
+   136→                onClick={() => handleTabChange(tab.id)}
+   137→                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+   138→                  activeTab === tab.id
+   139→                    ? 'bg-green-50 text-green-700'
+   140→                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+   141→                }`}
+   142→              >
+   143→                <tab.icon className="h-4 w-4" />
+   144→                {tab.label}
+   145→                {tab.id === 'cart' && cart.length > 0 && (
+   146→                  <Badge className="ml-auto bg-green-600 text-white text-xs h-5 min-w-5">{cart.length}</Badge>
+   147→                )}
+   148→              </button>
+   149→            ))}
+   150→          </nav>
+   151→        </aside>
+   152→
+   153→        {/* Mobile Tab Bar */}
+   154→        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t z-50">
+   155→          <div className="flex justify-around">
+   156→            {buyerTabs.map((tab) => (
+   157→              <button
+   158→                key={tab.id}
+   159→                onClick={() => handleTabChange(tab.id)}
+   160→                className={`flex flex-col items-center py-2 px-3 text-xs ${
+   161→                  activeTab === tab.id ? 'text-green-700' : 'text-muted-foreground'
+   162→                }`}
+   163→              >
+   164→                <div className="relative">
+   165→                  <tab.icon className="h-5 w-5" />
+   166→                  {tab.id === 'cart' && cart.length > 0 && (
+   167→                    <span className="absolute -top-1 -right-2 bg-green-600 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center">
+   168→                      {cart.length}
+   169→                    </span>
+   170→                  )}
+   171→                </div>
+   172→                {tab.label}
+   173→              </button>
+   174→            ))}
+   175→          </div>
+   176→        </div>
+   177→
+   178→        {/* Main Content */}
+   179→        <main className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
+   180→          {activeTab === 'products' && <ProductsTab />}
+   181→          {activeTab === 'shops' && <ShopsTab />}
+   182→          {activeTab === 'cart' && <CartTab />}
+   183→          {activeTab === 'orders' && <OrdersTab />}
+   184→          {activeTab === 'profile' && <ProfileTab />}
+   185→        </main>
+   186→      </div>
+   187→
+   188→      {/* Footer */}
+   189→      <footer className="bg-gray-900 text-gray-400 md:mt-auto">
+   190→        <div className="max-w-6xl mx-auto px-4 py-4 text-center text-sm">
+   191→          © 2024 Z-Market — Chợ Số Việt Nam
+   192→        </div>
+   193→      </footer>
+   194→    </div>
+   195→  )
+   196→}
+   197→
+   198→// ==================== PRODUCTS TAB ====================
+   199→function ProductsTab() {
+   200→  const { addToCart } = useAppStore()
+   201→  const [products, setProducts] = useState<Product[]>([])
+   202→  const [categories, setCategories] = useState<Category[]>([])
+   203→  const [loading, setLoading] = useState(true)
+   204→  const [search, setSearch] = useState('')
+   205→  const [selectedCategory, setSelectedCategory] = useState('all')
+   206→  const [page, setPage] = useState(1)
+   207→  const [totalPages, setTotalPages] = useState(1)
+   208→
+   209→  const fetchProducts = useCallback(async () => {
+   210→    setLoading(true)
+   211→    try {
+   212→      const params = new URLSearchParams()
+   213→      params.set('page', page.toString())
+   214→      params.set('limit', '12')
+   215→      if (search) params.set('search', search)
+   216→      if (selectedCategory && selectedCategory !== 'all') params.set('categoryId', selectedCategory)
+   217→
+   218→      const res = await fetch(`/api/products?${params}`)
+   219→      if (res.ok) {
+   220→        const data = await res.json()
+   221→        setProducts(data.products)
+   222→        setTotalPages(data.pagination.totalPages)
+   223→      }
+   224→    } catch { /* ignore */ }
+   225→    setLoading(false)
+   226→  }, [page, search, selectedCategory])
+   227→
+   228→  const fetchCategories = useCallback(async () => {
+   229→    try {
+   230→      const res = await fetch('/api/categories')
+   231→      if (res.ok) {
+   232→        const data = await res.json()
+   233→        setCategories(data.categories)
+   234→      }
+   235→    } catch { /* ignore */ }
+   236→  }, [])
+   237→
+   238→  useEffect(() => { fetchCategories() }, [fetchCategories])
+   239→  useEffect(() => { fetchProducts() }, [fetchProducts])
+   240→
+   241→  const handleAddToCart = async (productId: string) => {
+   242→    try {
+   243→      await addToCart(productId)
+   244→      toast.success('Đã thêm vào giỏ hàng')
+   245→    } catch (error) {
+   246→      toast.error(error instanceof Error ? error.message : 'Không thể thêm vào giỏ hàng')
+   247→    }
+   248→  }
+   249→
+   250→  return (
+   251→    <div>
+   252→      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+   253→        <div className="relative flex-1">
+   254→          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   255→          <Input
+   256→            placeholder="Tìm kiếm sản phẩm..."
+   257→            className="pl-9"
+   258→            value={search}
+   259→            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+   260→          />
+   261→        </div>
+   262→        <Select value={selectedCategory} onValueChange={(v) => { setSelectedCategory(v); setPage(1) }}>
+   263→          <SelectTrigger className="w-full sm:w-48">
+   264→            <SelectValue placeholder="Danh mục" />
+   265→          </SelectTrigger>
+   266→          <SelectContent>
+   267→            <SelectItem value="all">Tất cả danh mục</SelectItem>
+   268→            {categories.map((cat) => (
+   269→              <SelectItem key={cat.id} value={cat.id}>
+   270→                {cat.name} ({cat._count.products})
+   271→              </SelectItem>
+   272→            ))}
+   273→          </SelectContent>
+   274→        </Select>
+   275→      </div>
+   276→
+   277→      {loading ? (
+   278→        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+   279→          {Array.from({ length: 8 }).map((_, i) => (
+   280→            <Card key={i} className="overflow-hidden">
+   281→              <Skeleton className="h-40 w-full" />
+   282→              <CardContent className="p-3">
+   283→                <Skeleton className="h-4 w-3/4 mb-2" />
+   284→                <Skeleton className="h-4 w-1/2 mb-2" />
+   285→                <Skeleton className="h-4 w-1/3" />
+   286→              </CardContent>
+   287→            </Card>
+   288→          ))}
+   289→        </div>
+   290→      ) : products.length === 0 ? (
+   291→        <div className="text-center py-16">
+   292→          <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+   293→          <h3 className="text-lg font-semibold mb-1">Không tìm thấy sản phẩm</h3>
+   294→          <p className="text-muted-foreground">Thử thay đổi từ khóa hoặc danh mục</p>
+   295→        </div>
+   296→      ) : (
+   297→        <>
+   298→          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+   299→            {products.map((product) => (
+   300→              <Card key={product.id} className="overflow-hidden group hover:shadow-md transition-shadow">
+   301→                <div className="h-40 bg-muted flex items-center justify-center relative overflow-hidden">
+   302→                  {product.image ? (
+   303→                    <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+   304→                  ) : (
+   305→                    <Package className="h-10 w-10 text-muted-foreground" />
+   306→                  )}
+   307→                  {product.originalPrice && product.originalPrice > product.price && (
+   308→                    <Badge className="absolute top-2 left-2 bg-red-500 text-white text-xs">
+   309→                      -{Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)}%
+   310→                    </Badge>
+   311→                  )}
+   312→                </div>
+   313→                <CardContent className="p-3">
+   314→                  <h3 className="font-medium text-sm line-clamp-2 mb-1 min-h-[2.5rem]">{product.name}</h3>
+   315→                  <p className="text-xs text-muted-foreground mb-2">{product.shop.name}</p>
+   316→                  <div className="flex items-baseline gap-2 mb-2">
+   317→                    <span className="text-green-700 font-bold">{formatPrice(product.price)}</span>
+   318→                    {product.originalPrice && product.originalPrice > product.price && (
+   319→                      <span className="text-xs text-muted-foreground line-through">{formatPrice(product.originalPrice)}</span>
+   320→                    )}
+   321→                  </div>
+   322→                  <div className="flex items-center justify-between">
+   323→                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+   324→                      <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+   325→                      {product.rating.toFixed(1)}
+   326→                      <span className="ml-1">| Đã bán {product.soldCount}</span>
+   327→                    </div>
+   328→                  </div>
+   329→                  <Button
+   330→                    size="sm"
+   331→                    className="w-full mt-2 h-8 text-xs"
+   332→                    onClick={() => handleAddToCart(product.id)}
+   333→                  >
+   334→                    <Plus className="h-3 w-3 mr-1" />
+   335→                    Thêm vào giỏ
+   336→                  </Button>
+   337→                </CardContent>
+   338→              </Card>
+   339→            ))}
+   340→          </div>
+   341→
+   342→          {/* Pagination */}
+   343→          {totalPages > 1 && (
+   344→            <div className="flex items-center justify-center gap-2 mt-6">
+   345→              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+   346→                <ChevronLeft className="h-4 w-4" />
+   347→              </Button>
+   348→              <span className="text-sm text-muted-foreground">
+   349→                Trang {page} / {totalPages}
+   350→              </span>
+   351→              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+   352→                <ChevronRight className="h-4 w-4" />
+   353→              </Button>
+   354→            </div>
+   355→          )}
+   356→        </>
+   357→      )}
+   358→    </div>
+   359→  )
+   360→}
+   361→
+   362→// ==================== SHOPS TAB ====================
+   363→function ShopsTab() {
+   364→  const [shops, setShops] = useState<Shop[]>([])
+   365→  const [loading, setLoading] = useState(true)
+   366→  const [search, setSearch] = useState('')
+   367→
+   368→  useEffect(() => {
+   369→    const fetchShops = async () => {
+   370→      setLoading(true)
+   371→      try {
+   372→        const params = new URLSearchParams()
+   373→        if (search) params.set('search', search)
+   374→        const res = await fetch(`/api/shops?${params}`)
+   375→        if (res.ok) {
+   376→          const data = await res.json()
+   377→          setShops(data.shops)
+   378→        }
+   379→      } catch { /* ignore */ }
+   380→      setLoading(false)
+   381→    }
+   382→    fetchShops()
+   383→  }, [search])
+   384→
+   385→  return (
+   386→    <div>
+   387→      <div className="relative mb-6">
+   388→        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   389→        <Input
+   390→          placeholder="Tìm kiếm sạp hàng..."
+   391→          className="pl-9"
+   392→          value={search}
+   393→          onChange={(e) => setSearch(e.target.value)}
+   394→        />
+   395→      </div>
+   396→
+   397→      {loading ? (
+   398→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   399→          {Array.from({ length: 6 }).map((_, i) => (
+   400→            <Card key={i}>
+   401→              <CardContent className="p-4">
+   402→                <Skeleton className="h-6 w-3/4 mb-2" />
+   403→                <Skeleton className="h-4 w-1/2 mb-2" />
+   404→                <Skeleton className="h-4 w-1/3" />
+   405→              </CardContent>
+   406→            </Card>
+   407→          ))}
+   408→        </div>
+   409→      ) : (
+   410→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   411→          {shops.map((shop) => (
+   412→            <Card key={shop.id} className="hover:shadow-md transition-shadow">
+   413→              <CardContent className="p-4">
+   414→                <div className="flex items-start gap-3">
+   415→                  <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center shrink-0">
+   416→                    {shop.image ? (
+   417→                      <img src={shop.image} alt={shop.name} className="w-full h-full rounded-xl object-cover" />
+   418→                    ) : (
+   419→                      <Store className="h-6 w-6 text-green-600" />
+   420→                    )}
+   421→                  </div>
+   422→                  <div className="flex-1 min-w-0">
+   423→                    <h3 className="font-semibold truncate">{shop.name}</h3>
+   424→                    <div className="flex items-center gap-1 text-sm text-muted-foreground mt-0.5">
+   425→                      <MapPin className="h-3 w-3" />
+   426→                      <span className="truncate">{shop.address}</span>
+   427→                    </div>
+   428→                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+   429→                      <span className="flex items-center gap-1">
+   430→                        <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+   431→                        {shop.rating.toFixed(1)}
+   432→                      </span>
+   433→                      <span>{shop._count.products} sản phẩm</span>
+   434→                    </div>
+   435→                  </div>
+   436→                </div>
+   437→              </CardContent>
+   438→            </Card>
+   439→          ))}
+   440→        </div>
+   441→      )}
+   442→    </div>
+   443→  )
+   444→}
+   445→
+   446→// ==================== CART TAB ====================
+   447→function CartTab() {
+   448→  const { cart, cartTotal, updateCartItem, removeCartItem } = useAppStore()
+   449→  const [checkingOut, setCheckingOut] = useState(false)
+   450→  const [address, setAddress] = useState('')
+   451→  const [phone, setPhone] = useState('')
+   452→  const [note, setNote] = useState('')
+   453→
+   454→  const handleCheckout = async () => {
+   455→    if (!address.trim()) { toast.error('Vui lòng nhập địa chỉ giao hàng'); return }
+   456→    if (!phone.trim()) { toast.error('Vui lòng nhập số điện thoại'); return }
+   457→    setCheckingOut(true)
+   458→    try {
+   459→      const res = await fetch('/api/orders', {
+   460→        method: 'POST',
+   461→        headers: { 'Content-Type': 'application/json' },
+   462→        body: JSON.stringify({ address, phone, note: note || undefined, paymentMethod: 'COD', shippingFee: 15000 }),
+   463→      })
+   464→      const data = await res.json()
+   465→      if (!res.ok) throw new Error(data.error || 'Đặt hàng thất bại')
+   466→      toast.success('Đặt hàng thành công!')
+   467→      await fetchCart()
+   468→      setAddress('')
+   469→      setPhone('')
+   470→      setNote('')
+   471→    } catch (error) {
+   472→      toast.error(error instanceof Error ? error.message : 'Đặt hàng thất bại')
+   473→    }
+   474→    setCheckingOut(false)
+   475→  }
+   476→
+   477→  if (cart.length === 0) {
+   478→    return (
+   479→      <div className="text-center py-16">
+   480→        <ShoppingCart className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+   481→        <h3 className="text-lg font-semibold mb-1">Giỏ hàng trống</h3>
+   482→        <p className="text-muted-foreground">Hãy thêm sản phẩm vào giỏ hàng</p>
+   483→      </div>
+   484→    )
+   485→  }
+   486→
+   487→  return (
+   488→    <div className="max-w-2xl">
+   489→      <h2 className="text-xl font-bold mb-4">Giỏ hàng ({cart.length} sản phẩm)</h2>
+   490→      <div className="space-y-3 mb-6">
+   491→        {cart.map((item) => (
+   492→          <Card key={item.id}>
+   493→            <CardContent className="p-4">
+   494→              <div className="flex gap-3">
+   495→                <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center shrink-0">
+   496→                  {item.product.image ? (
+   497→                    <img src={item.product.image} alt={item.product.name} className="w-full h-full rounded-lg object-cover" />
+   498→                  ) : (
+   499→                    <Package className="h-6 w-6 text-muted-foreground" />
+   500→                  )}
+   501→                </div>
+   502→                <div className="flex-1 min-w-0">
+   503→                  <h4 className="font-medium text-sm truncate">{item.product.name}</h4>
+   504→                  <p className="text-xs text-muted-foreground">{item.product.shop.name} · {item.product.unit}</p>
+   505→                  <p className="text-green-700 font-bold text-sm mt-0.5">{formatPrice(item.product.price)}</p>
+   506→                </div>
+   507→                <div className="flex flex-col items-end gap-2">
+   508→                  <Button
+   509→                    variant="ghost"
+   510→                    size="sm"
+   511→                    className="h-6 w-6 p-0 text-muted-foreground hover:text-red-500"
+   512→                    onClick={() => removeCartItem(item.id)}
+   513→                  >
+   514→                    <Trash2 className="h-4 w-4" />
+   515→                  </Button>
+   516→                  <div className="flex items-center gap-1">
+   517→                    <Button
+   518→                      variant="outline"
+   519→                      size="sm"
+   520→                      className="h-7 w-7 p-0"
+   521→                      onClick={() => updateCartItem(item.id, Math.max(1, item.quantity - 1))}
+   522→                    >
+   523→                      <Minus className="h-3 w-3" />
+   524→                    </Button>
+   525→                    <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+   526→                    <Button
+   527→                      variant="outline"
+   528→                      size="sm"
+   529→                      className="h-7 w-7 p-0"
+   530→                      onClick={() => updateCartItem(item.id, item.quantity + 1)}
+   531→                    >
+   532→                      <Plus className="h-3 w-3" />
+   533→                    </Button>
+   534→                  </div>
+   535→                </div>
+   536→              </div>
+   537→            </CardContent>
+   538→          </Card>
+   539→        ))}
+   540→      </div>
+   541→
+   542→      <Separator className="my-4" />
+   543→
+   544→      <div className="space-y-3">
+   545→        <div className="flex justify-between text-sm">
+   546→          <span>Tạm tính</span>
+   547→          <span>{formatPrice(cartTotal)}</span>
+   548→        </div>
+   549→        <div className="flex justify-between text-sm">
+   550→          <span>Phí giao hàng</span>
+   551→          <span>{formatPrice(15000)}</span>
+   552→        </div>
+   553→        <Separator />
+   554→        <div className="flex justify-between font-bold text-lg">
+   555→          <span>Tổng cộng</span>
+   556→          <span className="text-green-700">{formatPrice(cartTotal + 15000)}</span>
+   557→        </div>
+   558→      </div>
+   559→
+   560→      <Separator className="my-4" />
+   561→
+   562→      <div className="space-y-3">
+   563→        <h3 className="font-semibold">Thông tin giao hàng</h3>
+   564→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   565→          <div className="space-y-1">
+   566→            <Label className="text-xs">Địa chỉ giao hàng *</Label>
+   567→            <Input placeholder="Số nhà, đường, quận..." value={address} onChange={(e) => setAddress(e.target.value)} />
+   568→          </div>
+   569→          <div className="space-y-1">
+   570→            <Label className="text-xs">Số điện thoại *</Label>
+   571→            <Input placeholder="0901234567" value={phone} onChange={(e) => setPhone(e.target.value)} />
+   572→          </div>
+   573→        </div>
+   574→        <div className="space-y-1">
+   575→          <Label className="text-xs">Ghi chú</Label>
+   576→          <Textarea placeholder="Ghi chú cho người giao hàng..." value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
+   577→        </div>
+   578→        <Button className="w-full" size="lg" onClick={handleCheckout} disabled={checkingOut}>
+   579→          {checkingOut ? (
+   580→            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Đang đặt hàng...</>
+   581→          ) : (
+   582→            'Đặt hàng (COD)'
+   583→          )}
+   584→        </Button>
+   585→      </div>
+   586→    </div>
+   587→  )
+   588→}
+   589→
+   590→// ==================== ORDERS TAB ====================
+   591→function OrdersTab() {
+   592→  const [orders, setOrders] = useState<Order[]>([])
+   593→  const [loading, setLoading] = useState(true)
+   594→  const [statusFilter, setStatusFilter] = useState('all')
+   595→
+   596→  const fetchOrders = useCallback(async () => {
+   597→    setLoading(true)
+   598→    try {
+   599→      const params = new URLSearchParams()
+   600→      if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
+   601→      const res = await fetch(`/api/orders?${params}`)
+   602→      if (res.ok) {
+   603→        const data = await res.json()
+   604→        setOrders(data.orders)
+   605→      }
+   606→    } catch { /* ignore */ }
+   607→    setLoading(false)
+   608→  }, [statusFilter])
+   609→
+   610→  useEffect(() => { fetchOrders() }, [fetchOrders])
+   611→
+   612→  const handleCancel = async (orderId: string) => {
+   613→    try {
+   614→      const res = await fetch(`/api/orders/${orderId}`, {
+   615→        method: 'PUT',
+   616→        headers: { 'Content-Type': 'application/json' },
+   617→        body: JSON.stringify({ status: 'CANCELLED' }),
+   618→      })
+   619→      const data = await res.json()
+   620→      if (!res.ok) throw new Error(data.error)
+   621→      toast.success('Đã hủy đơn hàng')
+   622→      fetchOrders()
+   623→    } catch (error) {
+   624→      toast.error(error instanceof Error ? error.message : 'Không thể hủy đơn hàng')
+   625→    }
+   626→  }
+   627→
+   628→  return (
+   629→    <div>
+   630→      <div className="flex items-center justify-between mb-4">
+   631→        <h2 className="text-xl font-bold">Đơn hàng</h2>
+   632→        <Select value={statusFilter} onValueChange={setStatusFilter}>
+   633→          <SelectTrigger className="w-44">
+   634→            <SelectValue placeholder="Lọc trạng thái" />
+   635→          </SelectTrigger>
+   636→          <SelectContent>
+   637→            <SelectItem value="all">Tất cả</SelectItem>
+   638→            <SelectItem value="PENDING">Chờ xác nhận</SelectItem>
+   639→            <SelectItem value="CONFIRMED">Đã xác nhận</SelectItem>
+   640→            <SelectItem value="PREPARING">Đang chuẩn bị</SelectItem>
+   641→            <SelectItem value="SHIPPING">Đang giao</SelectItem>
+   642→            <SelectItem value="DELIVERED">Đã giao</SelectItem>
+   643→            <SelectItem value="CANCELLED">Đã hủy</SelectItem>
+   644→          </SelectContent>
+   645→        </Select>
+   646→      </div>
+   647→
+   648→      {loading ? (
+   649→        <div className="space-y-4">
+   650→          {Array.from({ length: 3 }).map((_, i) => (
+   651→            <Card key={i}><CardContent className="p-4"><Skeleton className="h-24 w-full" /></CardContent></Card>
+   652→          ))}
+   653→        </div>
+   654→      ) : orders.length === 0 ? (
+   655→        <div className="text-center py-16">
+   656→          <ClipboardList className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+   657→          <h3 className="text-lg font-semibold mb-1">Chưa có đơn hàng</h3>
+   658→          <p className="text-muted-foreground">Đơn hàng của bạn sẽ xuất hiện ở đây</p>
+   659→        </div>
+   660→      ) : (
+   661→        <div className="space-y-4">
+   662→          {orders.map((order) => (
+   663→            <Card key={order.id}>
+   664→              <CardContent className="p-4">
+   665→                <div className="flex items-start justify-between mb-3">
+   666→                  <div>
+   667→                    <p className="font-semibold text-sm">Đơn #{order.id.slice(-8)}</p>
+   668→                    <p className="text-xs text-muted-foreground">{formatDateTime(order.createdAt)}</p>
+   669→                  </div>
+   670→                  <div className="flex items-center gap-2">
+   671→                    <Badge className={`${getStatusColor(order.status)} text-xs`}>
+   672→                      {getStatusLabel(order.status)}
+   673→                    </Badge>
+   674→                    <Badge className={`${getPaymentStatusColor(order.paymentStatus)} text-xs`}>
+   675→                      {getPaymentStatusLabel(order.paymentStatus)}
+   676→                    </Badge>
+   677→                  </div>
+   678→                </div>
+   679→                <div className="text-sm text-muted-foreground mb-2">
+   680→                  🏪 {order.shop.name}
+   681→                </div>
+   682→                <div className="space-y-1 mb-3">
+   683→                  {order.items.map((item) => (
+   684→                    <div key={item.id} className="flex justify-between text-sm">
+   685→                      <span>{item.product.name} x{item.quantity}</span>
+   686→                      <span>{formatPrice(item.price * item.quantity)}</span>
+   687→                    </div>
+   688→                  ))}
+   689→                  <Separator className="my-1" />
+   690→                  <div className="flex justify-between text-sm">
+   691→                    <span>Phí giao hàng</span>
+   692→                    <span>{formatPrice(order.shippingFee)}</span>
+   693→                  </div>
+   694→                  <div className="flex justify-between font-bold">
+   695→                    <span>Tổng cộng</span>
+   696→                    <span className="text-green-700">{formatPrice(order.total + order.shippingFee)}</span>
+   697→                  </div>
+   698→                </div>
+   699→                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+   700→                  <MapPin className="h-3 w-3" />
+   701→                  {order.address}
+   702→                  <Phone className="h-3 w-3 ml-2" />
+   703→                  {order.phone}
+   704→                </div>
+   705→                <div className="flex items-center justify-between">
+   706→                  <span className="text-xs text-muted-foreground">{getPaymentMethodLabel(order.paymentMethod)}</span>
+   707→                  {order.status === 'PENDING' && (
+   708→                    <Button variant="destructive" size="sm" onClick={() => handleCancel(order.id)}>
+   709→                      Hủy đơn
+   710→                    </Button>
+   711→                  )}
+   712→                </div>
+   713→              </CardContent>
+   714→            </Card>
+   715→          ))}
+   716→        </div>
+   717→      )}
+   718→    </div>
+   719→  )
+   720→}
+   721→
+   722→// ==================== PROFILE TAB ====================
+   723→function ProfileTab() {
+   724→  const { user } = useAppStore()
+   725→  if (!user) return null
+   726→
+   727→  return (
+   728→    <div className="max-w-lg">
+   729→      <h2 className="text-xl font-bold mb-4">Hồ sơ cá nhân</h2>
+   730→      <Card>
+   731→        <CardContent className="p-6">
+   732→          <div className="flex items-center gap-4 mb-6">
+   733→            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-2xl font-bold text-green-700">
+   734→              {user.name.charAt(0).toUpperCase()}
+   735→            </div>
+   736→            <div>
+   737→              <h3 className="text-lg font-semibold">{user.name}</h3>
+   738→              <Badge className="bg-green-100 text-green-700">Người mua</Badge>
+   739→            </div>
+   740→          </div>
+   741→          <div className="space-y-4">
+   742→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   743→              <div>
+   744→                <p className="text-xs text-muted-foreground mb-1">Email</p>
+   745→                <p className="text-sm font-medium">{user.email}</p>
+   746→              </div>
+   747→              <div>
+   748→                <p className="text-xs text-muted-foreground mb-1">Số điện thoại</p>
+   749→                <p className="text-sm font-medium">{user.phone || 'Chưa cập nhật'}</p>
+   750→              </div>
+   751→              <div>
+   752→                <p className="text-xs text-muted-foreground mb-1">Địa chỉ</p>
+   753→                <p className="text-sm font-medium">{user.address || 'Chưa cập nhật'}</p>
+   754→              </div>
+   755→              <div>
+   756→                <p className="text-xs text-muted-foreground mb-1">Ngày tham gia</p>
+   757→                <p className="text-sm font-medium">{formatDateTime(user.createdAt)}</p>
+   758→              </div>
+   759→            </div>
+   760→          </div>
+   761→        </CardContent>
+   762→      </Card>
+   763→    </div>
+   764→  )
+   765→}
+   766→

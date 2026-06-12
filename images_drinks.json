@@ -1,0 +1,29 @@
+{
+  "success": true,
+  "query": "Vietnamese drinks tea coffee",
+  "count": 3,
+  "ranked": true,
+  "results": [
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/9dfdf801d403.jpg",
+      "caption": "A Vietnamese coffee drip set and a glass of iced tea on a wooden table. suitable for background image",
+      "source": "Tasting Table",
+      "original_width": "1600px",
+      "original_height": "899px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/5cd1d495c407.jpg",
+      "caption": "A clear plastic cup of iced coffee with a dome lid on a wooden table. Text: Viet Coffee • Gelato • Drinks hi hi cafe suitable for background image",
+      "source": "Yelp",
+      "original_width": "1000px",
+      "original_height": "1000px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/46d2b8ef57f1.jpg",
+      "caption": "A woman prepares Vietnamese milk coffee outdoors, with text: \"BREW LIKE A LOCAL: VIETNAMESE MILK COFFEE\".",
+      "source": "YouTube",
+      "original_width": "1280px",
+      "original_height": "720px"
+    }
+  ]
+}

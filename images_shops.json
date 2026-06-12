@@ -1,0 +1,36 @@
+{
+  "success": true,
+  "query": "Vietnamese traditional market stall",
+  "count": 4,
+  "ranked": true,
+  "results": [
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/cddf15cb43ef.jpeg",
+      "caption": "A nostalgic Vietnamese shop decorated with national flags, featuring snacks and traditional items.",
+      "source": "Pexels",
+      "original_width": "2981px",
+      "original_height": "1677px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/fcb8cb1247ff.jpg",
+      "caption": "Two women in traditional embroidered clothing and a child in a carrier stand at a market stall displaying colorful textiles. suitable for background image",
+      "source": "Authentik Travel",
+      "original_width": "2560px",
+      "original_height": "1920px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/8b0b6f36f4f6.jpg",
+      "caption": "A collage of Da Nang Han Market showing a woman, traditional dresses, and woven baskets. Text: \"Da Nang Han Market\".",
+      "source": "Trip.com",
+      "original_width": "1201px",
+      "original_height": "1599px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/950eb89ff455.jpg",
+      "caption": "A bustling indoor market stall displays colorful hand-painted coconut bowls and crafts under Vietnamese flags.",
+      "source": "Báo Ảnh Việt Nam",
+      "original_width": "1920px",
+      "original_height": "1440px"
+    }
+  ]
+}

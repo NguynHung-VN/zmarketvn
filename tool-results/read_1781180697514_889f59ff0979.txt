@@ -1,0 +1,986 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import { Button } from '@/components/ui/button'
+     5→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     6→import { Input } from '@/components/ui/input'
+     7→import { Textarea } from '@/components/ui/textarea'
+     8→import { Label } from '@/components/ui/label'
+     9→import { Badge } from '@/components/ui/badge'
+    10→import { Skeleton } from '@/components/ui/skeleton'
+    11→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    12→import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+    13→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+    14→import { ScrollArea } from '@/components/ui/scroll-area'
+    15→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    16→import { toast } from 'sonner'
+    17→import {
+    18→  MessageSquareWarning, Send, Filter, Search, Reply,
+    19→  CheckCircle2, AlertCircle, Loader2, ChevronLeft, ChevronRight,
+    20→  MessageCircle, Clock, AlertTriangle, Bug, Lightbulb, X
+    21→} from 'lucide-react'
+    22→
+    23→// Types
+    24→interface FeedbackUser {
+    25→  id: string
+    26→  name: string
+    27→  email: string
+    28→  role: string
+    29→}
+    30→
+    31→interface FeedbackReplier {
+    32→  id: string
+    33→  name: string
+    34→}
+    35→
+    36→interface Feedback {
+    37→  id: string
+    38→  subject: string
+    39→  content: string
+    40→  type: string
+    41→  status: string
+    42→  priority: string
+    43→  userId: string
+    44→  adminReply: string | null
+    45→  repliedBy: string | null
+    46→  createdAt: string
+    47→  updatedAt: string
+    48→  user: FeedbackUser
+    49→  replier: FeedbackReplier | null
+    50→}
+    51→
+    52→interface FeedbackStats {
+    53→  total: number
+    54→  pending: number
+    55→  inProgress: number
+    56→  resolved: number
+    57→}
+    58→
+    59→interface FeedbackPanelProps {
+    60→  userId: string
+    61→  userRole: string
+    62→}
+    63→
+    64→// Helpers
+    65→function getFeedbackTypeLabel(type: string): string {
+    66→  const map: Record<string, string> = {
+    67→    FEEDBACK: 'Phản hồi',
+    68→    COMPLAINT: 'Khiếu nại',
+    69→    SUGGESTION: 'Gợi ý',
+    70→    BUG_REPORT: 'Báo lỗi',
+    71→  }
+    72→  return map[type] || type
+    73→}
+    74→
+    75→function getFeedbackTypeColor(type: string): string {
+    76→  const map: Record<string, string> = {
+    77→    FEEDBACK: 'bg-green-100 text-green-800',
+    78→    COMPLAINT: 'bg-red-100 text-red-800',
+    79→    SUGGESTION: 'bg-purple-100 text-purple-800',
+    80→    BUG_REPORT: 'bg-orange-100 text-orange-800',
+    81→  }
+    82→  return map[type] || 'bg-gray-100 text-gray-800'
+    83→}
+    84→
+    85→function getFeedbackTypeIcon(type: string) {
+    86→  switch (type) {
+    87→    case 'FEEDBACK': return <MessageCircle className="h-3.5 w-3.5" />
+    88→    case 'COMPLAINT': return <AlertTriangle className="h-3.5 w-3.5" />
+    89→    case 'SUGGESTION': return <Lightbulb className="h-3.5 w-3.5" />
+    90→    case 'BUG_REPORT': return <Bug className="h-3.5 w-3.5" />
+    91→    default: return <MessageSquareWarning className="h-3.5 w-3.5" />
+    92→  }
+    93→}
+    94→
+    95→function getFeedbackStatusLabel(status: string): string {
+    96→  const map: Record<string, string> = {
+    97→    PENDING: 'Chờ xử lý',
+    98→    IN_PROGRESS: 'Đang xử lý',
+    99→    RESOLVED: 'Đã giải quyết',
+   100→    CLOSED: 'Đã đóng',
+   101→  }
+   102→  return map[status] || status
+   103→}
+   104→
+   105→function getFeedbackStatusColor(status: string): string {
+   106→  const map: Record<string, string> = {
+   107→    PENDING: 'bg-yellow-100 text-yellow-800',
+   108→    IN_PROGRESS: 'bg-blue-100 text-blue-800',
+   109→    RESOLVED: 'bg-green-100 text-green-800',
+   110→    CLOSED: 'bg-gray-100 text-gray-800',
+   111→  }
+   112→  return map[status] || 'bg-gray-100 text-gray-800'
+   113→}
+   114→
+   115→function getFeedbackStatusIcon(status: string) {
+   116→  switch (status) {
+   117→    case 'PENDING': return <Clock className="h-3.5 w-3.5" />
+   118→    case 'IN_PROGRESS': return <Loader2 className="h-3.5 w-3.5" />
+   119→    case 'RESOLVED': return <CheckCircle2 className="h-3.5 w-3.5" />
+   120→    case 'CLOSED': return <X className="h-3.5 w-3.5" />
+   121→    default: return <AlertCircle className="h-3.5 w-3.5" />
+   122→  }
+   123→}
+   124→
+   125→function getPriorityLabel(priority: string): string {
+   126→  const map: Record<string, string> = {
+   127→    LOW: 'Thấp',
+   128→    MEDIUM: 'Trung bình',
+   129→    HIGH: 'Cao',
+   130→    URGENT: 'Khẩn cấp',
+   131→  }
+   132→  return map[priority] || priority
+   133→}
+   134→
+   135→function getPriorityColor(priority: string): string {
+   136→  const map: Record<string, string> = {
+   137→    LOW: 'bg-slate-100 text-slate-700',
+   138→    MEDIUM: 'bg-blue-100 text-blue-700',
+   139→    HIGH: 'bg-orange-100 text-orange-700',
+   140→    URGENT: 'bg-red-100 text-red-700',
+   141→  }
+   142→  return map[priority] || 'bg-gray-100 text-gray-800'
+   143→}
+   144→
+   145→function formatDateTime(dateStr: string): string {
+   146→  return new Date(dateStr).toLocaleDateString('vi-VN', {
+   147→    day: '2-digit',
+   148→    month: '2-digit',
+   149→    year: 'numeric',
+   150→    hour: '2-digit',
+   151→    minute: '2-digit',
+   152→  })
+   153→}
+   154→
+   155→// ==================== USER MODE ====================
+   156→function UserFeedbackPanel({ userId }: { userId: string }) {
+   157→  const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
+   158→  const [loading, setLoading] = useState(true)
+   159→  const [submitting, setSubmitting] = useState(false)
+   160→  const [page, setPage] = useState(1)
+   161→  const [totalPages, setTotalPages] = useState(1)
+   162→
+   163→  // Form state
+   164→  const [subject, setSubject] = useState('')
+   165→  const [content, setContent] = useState('')
+   166→  const [type, setType] = useState('FEEDBACK')
+   167→  const [priority, setPriority] = useState('MEDIUM')
+   168→
+   169→  const fetchFeedbacks = useCallback(async () => {
+   170→    try {
+   171→      const res = await fetch(`/api/feedback?page=${page}&limit=10`)
+   172→      if (res.ok) {
+   173→        const data = await res.json()
+   174→        setFeedbacks(data.feedbacks)
+   175→        setTotalPages(data.pagination.totalPages)
+   176→      }
+   177→    } catch {
+   178→      // ignore
+   179→    } finally {
+   180→      setLoading(false)
+   181→    }
+   182→  }, [page])
+   183→
+   184→  useEffect(() => {
+   185→    fetchFeedbacks()
+   186→  }, [fetchFeedbacks])
+   187→
+   188→  const handleSubmit = async () => {
+   189→    if (!subject.trim()) {
+   190→      toast.error('Vui lòng nhập tiêu đề')
+   191→      return
+   192→    }
+   193→    if (!content.trim() || content.trim().length < 10) {
+   194→      toast.error('Nội dung phải có ít nhất 10 ký tự')
+   195→      return
+   196→    }
+   197→
+   198→    setSubmitting(true)
+   199→    try {
+   200→      const res = await fetch('/api/feedback', {
+   201→        method: 'POST',
+   202→        headers: { 'Content-Type': 'application/json' },
+   203→        body: JSON.stringify({ subject, content, type, priority }),
+   204→      })
+   205→      const data = await res.json()
+   206→      if (!res.ok) {
+   207→        throw new Error(data.error || 'Gửi phản hồi thất bại')
+   208→      }
+   209→      toast.success('Gửi phản hồi thành công!')
+   210→      setSubject('')
+   211→      setContent('')
+   212→      setType('FEEDBACK')
+   213→      setPriority('MEDIUM')
+   214→      setPage(1)
+   215→      await fetchFeedbacks()
+   216→    } catch (error) {
+   217→      toast.error(error instanceof Error ? error.message : 'Gửi phản hồi thất bại')
+   218→    } finally {
+   219→      setSubmitting(false)
+   220→    }
+   221→  }
+   222→
+   223→  return (
+   224→    <Tabs defaultValue="form" className="w-full">
+   225→      <TabsList className="w-full grid grid-cols-2 mb-4">
+   226→        <TabsTrigger value="form" className="flex items-center gap-2">
+   227→          <Send className="h-4 w-4" />
+   228→          Gửi phản hồi
+   229→        </TabsTrigger>
+   230→        <TabsTrigger value="list" className="flex items-center gap-2">
+   231→          <MessageCircle className="h-4 w-4" />
+   232→          Phản hồi của tôi
+   233→        </TabsTrigger>
+   234→      </TabsList>
+   235→
+   236→      {/* Feedback Form */}
+   237→      <TabsContent value="form">
+   238→        <Card>
+   239→          <CardHeader className="pb-4">
+   240→            <CardTitle className="text-lg flex items-center gap-2">
+   241→              <MessageSquareWarning className="h-5 w-5 text-emerald-600" />
+   242→              Gửi phản hồi mới
+   243→            </CardTitle>
+   244→          </CardHeader>
+   245→          <CardContent className="space-y-4">
+   246→            <div className="space-y-2">
+   247→              <Label htmlFor="fb-subject">Tiêu đề *</Label>
+   248→              <Input
+   249→                id="fb-subject"
+   250→                placeholder="Nhập tiêu đề phản hồi..."
+   251→                value={subject}
+   252→                onChange={(e) => setSubject(e.target.value)}
+   253→                maxLength={200}
+   254→              />
+   255→            </div>
+   256→
+   257→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   258→              <div className="space-y-2">
+   259→                <Label>Loại phản hồi</Label>
+   260→                <Select value={type} onValueChange={setType}>
+   261→                  <SelectTrigger>
+   262→                    <SelectValue />
+   263→                  </SelectTrigger>
+   264→                  <SelectContent>
+   265→                    <SelectItem value="FEEDBACK">
+   266→                      <span className="flex items-center gap-2">
+   267→                        <MessageCircle className="h-3.5 w-3.5 text-green-600" />
+   268→                        Phản hồi
+   269→                      </span>
+   270→                    </SelectItem>
+   271→                    <SelectItem value="COMPLAINT">
+   272→                      <span className="flex items-center gap-2">
+   273→                        <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
+   274→                        Khiếu nại
+   275→                      </span>
+   276→                    </SelectItem>
+   277→                    <SelectItem value="SUGGESTION">
+   278→                      <span className="flex items-center gap-2">
+   279→                        <Lightbulb className="h-3.5 w-3.5 text-purple-600" />
+   280→                        Gợi ý
+   281→                      </span>
+   282→                    </SelectItem>
+   283→                    <SelectItem value="BUG_REPORT">
+   284→                      <span className="flex items-center gap-2">
+   285→                        <Bug className="h-3.5 w-3.5 text-orange-600" />
+   286→                        Báo lỗi
+   287→                      </span>
+   288→                    </SelectItem>
+   289→                  </SelectContent>
+   290→                </Select>
+   291→              </div>
+   292→
+   293→              <div className="space-y-2">
+   294→                <Label>Mức ưu tiên</Label>
+   295→                <Select value={priority} onValueChange={setPriority}>
+   296→                  <SelectTrigger>
+   297→                    <SelectValue />
+   298→                  </SelectTrigger>
+   299→                  <SelectContent>
+   300→                    <SelectItem value="LOW">Thấp</SelectItem>
+   301→                    <SelectItem value="MEDIUM">Trung bình</SelectItem>
+   302→                    <SelectItem value="HIGH">Cao</SelectItem>
+   303→                    <SelectItem value="URGENT">Khẩn cấp</SelectItem>
+   304→                  </SelectContent>
+   305→                </Select>
+   306→              </div>
+   307→            </div>
+   308→
+   309→            <div className="space-y-2">
+   310→              <Label htmlFor="fb-content">Nội dung * <span className="text-muted-foreground text-xs">(tối thiểu 10 ký tự)</span></Label>
+   311→              <Textarea
+   312→                id="fb-content"
+   313→                placeholder="Mô tả chi tiết phản hồi của bạn..."
+   314→                value={content}
+   315→                onChange={(e) => setContent(e.target.value)}
+   316→                rows={5}
+   317→                maxLength={2000}
+   318→              />
+   319→              <p className="text-xs text-muted-foreground text-right">
+   320→                {content.length}/2000
+   321→              </p>
+   322→            </div>
+   323→
+   324→            <Button
+   325→              onClick={handleSubmit}
+   326→              disabled={submitting}
+   327→              className="w-full bg-emerald-600 hover:bg-emerald-700"
+   328→            >
+   329→              {submitting ? (
+   330→                <>
+   331→                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+   332→                  Đang gửi...
+   333→                </>
+   334→              ) : (
+   335→                <>
+   336→                  <Send className="h-4 w-4 mr-2" />
+   337→                  Gửi phản hồi
+   338→                </>
+   339→              )}
+   340→            </Button>
+   341→          </CardContent>
+   342→        </Card>
+   343→      </TabsContent>
+   344→
+   345→      {/* My Feedback List */}
+   346→      <TabsContent value="list">
+   347→        <Card>
+   348→          <CardHeader className="pb-4">
+   349→            <CardTitle className="text-lg flex items-center gap-2">
+   350→              <MessageCircle className="h-5 w-5 text-emerald-600" />
+   351→              Phản hồi của tôi
+   352→            </CardTitle>
+   353→          </CardHeader>
+   354→          <CardContent>
+   355→            {loading ? (
+   356→              <div className="space-y-4">
+   357→                {[1, 2, 3].map((i) => (
+   358→                  <div key={i} className="space-y-2 p-4 border rounded-lg">
+   359→                    <Skeleton className="h-5 w-3/4" />
+   360→                    <Skeleton className="h-4 w-full" />
+   361→                    <Skeleton className="h-4 w-1/2" />
+   362→                  </div>
+   363→                ))}
+   364→              </div>
+   365→            ) : feedbacks.length === 0 ? (
+   366→              <div className="text-center py-12 text-muted-foreground">
+   367→                <MessageSquareWarning className="h-12 w-12 mx-auto mb-3 opacity-30" />
+   368→                <p className="text-lg font-medium">Chưa có phản hồi nào</p>
+   369→                <p className="text-sm mt-1">Hãy gửi phản hồi đầu tiên của bạn!</p>
+   370→              </div>
+   371→            ) : (
+   372→              <>
+   373→                <ScrollArea className="max-h-[500px]">
+   374→                  <div className="space-y-3 pr-4">
+   375→                    {feedbacks.map((fb) => (
+   376→                      <Card key={fb.id} className="border hover:shadow-md transition-shadow">
+   377→                        <CardContent className="p-4">
+   378→                          <div className="flex items-start justify-between gap-2 mb-2">
+   379→                            <h4 className="font-medium text-sm leading-tight">{fb.subject}</h4>
+   380→                            <div className="flex items-center gap-1.5 shrink-0">
+   381→                              <Badge variant="outline" className={`${getFeedbackTypeColor(fb.type)} text-xs gap-1`}>
+   382→                                {getFeedbackTypeIcon(fb.type)}
+   383→                                {getFeedbackTypeLabel(fb.type)}
+   384→                              </Badge>
+   385→                            </div>
+   386→                          </div>
+   387→                          <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{fb.content}</p>
+   388→                          <div className="flex items-center gap-2 flex-wrap">
+   389→                            <Badge variant="outline" className={`${getFeedbackStatusColor(fb.status)} text-xs gap-1`}>
+   390→                              {getFeedbackStatusIcon(fb.status)}
+   391→                              {getFeedbackStatusLabel(fb.status)}
+   392→                            </Badge>
+   393→                            <Badge variant="outline" className={`${getPriorityColor(fb.priority)} text-xs`}>
+   394→                              {getPriorityLabel(fb.priority)}
+   395→                            </Badge>
+   396→                            <span className="text-xs text-muted-foreground ml-auto">
+   397→                              {formatDateTime(fb.createdAt)}
+   398→                            </span>
+   399→                          </div>
+   400→                          {fb.adminReply && (
+   401→                            <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+   402→                              <div className="flex items-center gap-1.5 mb-1">
+   403→                                <Reply className="h-3.5 w-3.5 text-emerald-600" />
+   404→                                <span className="text-xs font-medium text-emerald-700">
+   405→                                  Phản hồi từ {fb.replier?.name || 'Admin'}
+   406→                                </span>
+   407→                              </div>
+   408→                              <p className="text-sm text-emerald-800">{fb.adminReply}</p>
+   409→                            </div>
+   410→                          )}
+   411→                        </CardContent>
+   412→                      </Card>
+   413→                    ))}
+   414→                  </div>
+   415→                </ScrollArea>
+   416→
+   417→                {/* Pagination */}
+   418→                {totalPages > 1 && (
+   419→                  <div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t">
+   420→                    <Button
+   421→                      variant="outline"
+   422→                      size="sm"
+   423→                      onClick={() => setPage(p => Math.max(1, p - 1))}
+   424→                      disabled={page <= 1}
+   425→                    >
+   426→                      <ChevronLeft className="h-4 w-4" />
+   427→                    </Button>
+   428→                    <span className="text-sm text-muted-foreground">
+   429→                      {page} / {totalPages}
+   430→                    </span>
+   431→                    <Button
+   432→                      variant="outline"
+   433→                      size="sm"
+   434→                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+   435→                      disabled={page >= totalPages}
+   436→                    >
+   437→                      <ChevronRight className="h-4 w-4" />
+   438→                    </Button>
+   439→                  </div>
+   440→                )}
+   441→              </>
+   442→            )}
+   443→          </CardContent>
+   444→        </Card>
+   445→      </TabsContent>
+   446→    </Tabs>
+   447→  )
+   448→}
+   449→
+   450→// ==================== ADMIN MODE ====================
+   451→function AdminFeedbackPanel({ userId }: { userId: string }) {
+   452→  const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
+   453→  const [stats, setStats] = useState<FeedbackStats | null>(null)
+   454→  const [loading, setLoading] = useState(true)
+   455→  const [page, setPage] = useState(1)
+   456→  const [totalPages, setTotalPages] = useState(1)
+   457→
+   458→  // Filters
+   459→  const [filterStatus, setFilterStatus] = useState('all')
+   460→  const [filterType, setFilterType] = useState('all')
+   461→  const [filterPriority, setFilterPriority] = useState('all')
+   462→  const [searchQuery, setSearchQuery] = useState('')
+   463→
+   464→  // Detail dialog
+   465→  const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null)
+   466→  const [replyText, setReplyText] = useState('')
+   467→  const [replying, setReplying] = useState(false)
+   468→  const [updating, setUpdating] = useState(false)
+   469→
+   470→  const fetchFeedbacks = useCallback(async () => {
+   471→    try {
+   472→      const params = new URLSearchParams({
+   473→        page: page.toString(),
+   474→        limit: '10',
+   475→      })
+   476→      if (filterStatus && filterStatus !== 'all') params.set('status', filterStatus)
+   477→      if (filterType && filterType !== 'all') params.set('type', filterType)
+   478→      if (filterPriority && filterPriority !== 'all') params.set('priority', filterPriority)
+   479→      if (searchQuery) params.set('search', searchQuery)
+   480→
+   481→      const res = await fetch(`/api/feedback?${params}`)
+   482→      if (res.ok) {
+   483→        const data = await res.json()
+   484→        setFeedbacks(data.feedbacks)
+   485→        setTotalPages(data.pagination.totalPages)
+   486→        if (data.stats) setStats(data.stats)
+   487→      }
+   488→    } catch {
+   489→      // ignore
+   490→    } finally {
+   491→      setLoading(false)
+   492→    }
+   493→  }, [page, filterStatus, filterType, filterPriority, searchQuery])
+   494→
+   495→  useEffect(() => {
+   496→    fetchFeedbacks()
+   497→  }, [fetchFeedbacks])
+   498→
+   499→  const handleReply = async () => {
+   500→    if (!selectedFeedback || !replyText.trim()) {
+   501→      toast.error('Vui lòng nhập nội dung phản hồi')
+   502→      return
+   503→    }
+   504→    setReplying(true)
+   505→    try {
+   506→      const res = await fetch(`/api/feedback/${selectedFeedback.id}`, {
+   507→        method: 'PUT',
+   508→        headers: { 'Content-Type': 'application/json' },
+   509→        body: JSON.stringify({ adminReply: replyText }),
+   510→      })
+   511→      const data = await res.json()
+   512→      if (!res.ok) throw new Error(data.error || 'Phản hồi thất bại')
+   513→      toast.success('Đã gửi phản hồi thành công!')
+   514→      setReplyText('')
+   515→      setSelectedFeedback(data.feedback)
+   516→      await fetchFeedbacks()
+   517→    } catch (error) {
+   518→      toast.error(error instanceof Error ? error.message : 'Phản hồi thất bại')
+   519→    } finally {
+   520→      setReplying(false)
+   521→    }
+   522→  }
+   523→
+   524→  const handleStatusChange = async (feedbackId: string, newStatus: string) => {
+   525→    setUpdating(true)
+   526→    try {
+   527→      const res = await fetch(`/api/feedback/${feedbackId}`, {
+   528→        method: 'PUT',
+   529→        headers: { 'Content-Type': 'application/json' },
+   530→        body: JSON.stringify({ status: newStatus }),
+   531→      })
+   532→      const data = await res.json()
+   533→      if (!res.ok) throw new Error(data.error || 'Cập nhật thất bại')
+   534→      toast.success('Đã cập nhật trạng thái!')
+   535→      if (selectedFeedback?.id === feedbackId) {
+   536→        setSelectedFeedback(data.feedback)
+   537→      }
+   538→      await fetchFeedbacks()
+   539→    } catch (error) {
+   540→      toast.error(error instanceof Error ? error.message : 'Cập nhật thất bại')
+   541→    } finally {
+   542→      setUpdating(false)
+   543→    }
+   544→  }
+   545→
+   546→  const handlePriorityChange = async (feedbackId: string, newPriority: string) => {
+   547→    setUpdating(true)
+   548→    try {
+   549→      const res = await fetch(`/api/feedback/${feedbackId}`, {
+   550→        method: 'PUT',
+   551→        headers: { 'Content-Type': 'application/json' },
+   552→        body: JSON.stringify({ priority: newPriority }),
+   553→      })
+   554→      const data = await res.json()
+   555→      if (!res.ok) throw new Error(data.error || 'Cập nhật thất bại')
+   556→      toast.success('Đã cập nhật mức ưu tiên!')
+   557→      if (selectedFeedback?.id === feedbackId) {
+   558→        setSelectedFeedback(data.feedback)
+   559→      }
+   560→      await fetchFeedbacks()
+   561→    } catch (error) {
+   562→      toast.error(error instanceof Error ? error.message : 'Cập nhật thất bại')
+   563→    } finally {
+   564→      setUpdating(false)
+   565→    }
+   566→  }
+   567→
+   568→  return (
+   569→    <div className="space-y-4">
+   570→      {/* Stats Summary */}
+   571→      {stats && (
+   572→        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   573→          <Card className="border-l-4 border-l-gray-400">
+   574→            <CardContent className="p-3 sm:p-4">
+   575→              <div className="flex items-center justify-between">
+   576→                <div>
+   577→                  <p className="text-xs text-muted-foreground">Tổng cộng</p>
+   578→                  <p className="text-xl sm:text-2xl font-bold">{stats.total}</p>
+   579→                </div>
+   580→                <MessageSquareWarning className="h-6 w-6 text-gray-400" />
+   581→              </div>
+   582→            </CardContent>
+   583→          </Card>
+   584→          <Card className="border-l-4 border-l-yellow-400">
+   585→            <CardContent className="p-3 sm:p-4">
+   586→              <div className="flex items-center justify-between">
+   587→                <div>
+   588→                  <p className="text-xs text-muted-foreground">Chờ xử lý</p>
+   589→                  <p className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.pending}</p>
+   590→                </div>
+   591→                <Clock className="h-6 w-6 text-yellow-400" />
+   592→              </div>
+   593→            </CardContent>
+   594→          </Card>
+   595→          <Card className="border-l-4 border-l-blue-400">
+   596→            <CardContent className="p-3 sm:p-4">
+   597→              <div className="flex items-center justify-between">
+   598→                <div>
+   599→                  <p className="text-xs text-muted-foreground">Đang xử lý</p>
+   600→                  <p className="text-xl sm:text-2xl font-bold text-blue-600">{stats.inProgress}</p>
+   601→                </div>
+   602→                <Loader2 className="h-6 w-6 text-blue-400" />
+   603→              </div>
+   604→            </CardContent>
+   605→          </Card>
+   606→          <Card className="border-l-4 border-l-green-400">
+   607→            <CardContent className="p-3 sm:p-4">
+   608→              <div className="flex items-center justify-between">
+   609→                <div>
+   610→                  <p className="text-xs text-muted-foreground">Đã giải quyết</p>
+   611→                  <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.resolved}</p>
+   612→                </div>
+   613→                <CheckCircle2 className="h-6 w-6 text-green-400" />
+   614→              </div>
+   615→            </CardContent>
+   616→          </Card>
+   617→        </div>
+   618→      )}
+   619→
+   620→      {/* Filters */}
+   621→      <Card>
+   622→        <CardContent className="p-4">
+   623→          <div className="flex items-center gap-2 mb-3">
+   624→            <Filter className="h-4 w-4 text-muted-foreground" />
+   625→            <span className="text-sm font-medium">Bộ lọc</span>
+   626→          </div>
+   627→          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+   628→            <div className="relative">
+   629→              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+   630→              <Input
+   631→                placeholder="Tìm kiếm..."
+   632→                value={searchQuery}
+   633→                onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
+   634→                className="pl-9"
+   635→              />
+   636→            </div>
+   637→            <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v); setPage(1) }}>
+   638→              <SelectTrigger>
+   639→                <SelectValue placeholder="Trạng thái" />
+   640→              </SelectTrigger>
+   641→              <SelectContent>
+   642→                <SelectItem value="all">Tất cả trạng thái</SelectItem>
+   643→                <SelectItem value="PENDING">Chờ xử lý</SelectItem>
+   644→                <SelectItem value="IN_PROGRESS">Đang xử lý</SelectItem>
+   645→                <SelectItem value="RESOLVED">Đã giải quyết</SelectItem>
+   646→                <SelectItem value="CLOSED">Đã đóng</SelectItem>
+   647→              </SelectContent>
+   648→            </Select>
+   649→            <Select value={filterType} onValueChange={(v) => { setFilterType(v); setPage(1) }}>
+   650→              <SelectTrigger>
+   651→                <SelectValue placeholder="Loại" />
+   652→              </SelectTrigger>
+   653→              <SelectContent>
+   654→                <SelectItem value="all">Tất cả loại</SelectItem>
+   655→                <SelectItem value="FEEDBACK">Phản hồi</SelectItem>
+   656→                <SelectItem value="COMPLAINT">Khiếu nại</SelectItem>
+   657→                <SelectItem value="SUGGESTION">Gợi ý</SelectItem>
+   658→                <SelectItem value="BUG_REPORT">Báo lỗi</SelectItem>
+   659→              </SelectContent>
+   660→            </Select>
+   661→            <Select value={filterPriority} onValueChange={(v) => { setFilterPriority(v); setPage(1) }}>
+   662→              <SelectTrigger>
+   663→                <SelectValue placeholder="Mức ưu tiên" />
+   664→              </SelectTrigger>
+   665→              <SelectContent>
+   666→                <SelectItem value="all">Tất cả mức</SelectItem>
+   667→                <SelectItem value="LOW">Thấp</SelectItem>
+   668→                <SelectItem value="MEDIUM">Trung bình</SelectItem>
+   669→                <SelectItem value="HIGH">Cao</SelectItem>
+   670→                <SelectItem value="URGENT">Khẩn cấp</SelectItem>
+   671→              </SelectContent>
+   672→            </Select>
+   673→          </div>
+   674→        </CardContent>
+   675→      </Card>
+   676→
+   677→      {/* Feedback List */}
+   678→      {loading ? (
+   679→        <div className="space-y-4">
+   680→          {[1, 2, 3].map((i) => (
+   681→            <div key={i} className="space-y-2 p-4 border rounded-lg">
+   682→              <Skeleton className="h-5 w-1/3" />
+   683→              <Skeleton className="h-4 w-2/3" />
+   684→              <Skeleton className="h-4 w-1/4" />
+   685→            </div>
+   686→          ))}
+   687→        </div>
+   688→      ) : feedbacks.length === 0 ? (
+   689→        <Card>
+   690→          <CardContent className="py-12 text-center text-muted-foreground">
+   691→            <MessageSquareWarning className="h-12 w-12 mx-auto mb-3 opacity-30" />
+   692→            <p className="text-lg font-medium">Không có phản hồi nào</p>
+   693→            <p className="text-sm mt-1">Chưa có phản hồi nào phù hợp với bộ lọc</p>
+   694→          </CardContent>
+   695→        </Card>
+   696→      ) : (
+   697→        <>
+   698→          {/* Desktop Table View */}
+   699→          <div className="hidden lg:block">
+   700→            <Card>
+   701→              <CardContent className="p-0">
+   702→                <Table>
+   703→                  <TableHeader>
+   704→                    <TableRow>
+   705→                      <TableHead className="w-[50px]">STT</TableHead>
+   706→                      <TableHead>Người gửi</TableHead>
+   707→                      <TableHead>Tiêu đề</TableHead>
+   708→                      <TableHead>Loại</TableHead>
+   709→                      <TableHead>Ưu tiên</TableHead>
+   710→                      <TableHead>Trạng thái</TableHead>
+   711→                      <TableHead>Ngày gửi</TableHead>
+   712→                      <TableHead className="text-right">Thao tác</TableHead>
+   713→                    </TableRow>
+   714→                  </TableHeader>
+   715→                  <TableBody>
+   716→                    {feedbacks.map((fb, idx) => (
+   717→                      <TableRow
+   718→                        key={fb.id}
+   719→                        className="cursor-pointer hover:bg-muted/50"
+   720→                        onClick={() => setSelectedFeedback(fb)}
+   721→                      >
+   722→                        <TableCell className="text-muted-foreground text-sm">
+   723→                          {(page - 1) * 10 + idx + 1}
+   724→                        </TableCell>
+   725→                        <TableCell>
+   726→                          <div>
+   727→                            <p className="font-medium text-sm">{fb.user.name}</p>
+   728→                            <p className="text-xs text-muted-foreground">{fb.user.email}</p>
+   729→                          </div>
+   730→                        </TableCell>
+   731→                        <TableCell className="max-w-[200px]">
+   732→                          <p className="font-medium text-sm truncate">{fb.subject}</p>
+   733→                          <p className="text-xs text-muted-foreground truncate">{fb.content}</p>
+   734→                        </TableCell>
+   735→                        <TableCell>
+   736→                          <Badge variant="outline" className={`${getFeedbackTypeColor(fb.type)} text-xs gap-1`}>
+   737→                            {getFeedbackTypeIcon(fb.type)}
+   738→                            {getFeedbackTypeLabel(fb.type)}
+   739→                          </Badge>
+   740→                        </TableCell>
+   741→                        <TableCell>
+   742→                          <Badge variant="outline" className={`${getPriorityColor(fb.priority)} text-xs`}>
+   743→                            {getPriorityLabel(fb.priority)}
+   744→                          </Badge>
+   745→                        </TableCell>
+   746→                        <TableCell>
+   747→                          <Badge variant="outline" className={`${getFeedbackStatusColor(fb.status)} text-xs gap-1`}>
+   748→                            {getFeedbackStatusIcon(fb.status)}
+   749→                            {getFeedbackStatusLabel(fb.status)}
+   750→                          </Badge>
+   751→                        </TableCell>
+   752→                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+   753→                          {formatDateTime(fb.createdAt)}
+   754→                        </TableCell>
+   755→                        <TableCell className="text-right">
+   756→                          <Button
+   757→                            variant="ghost"
+   758→                            size="sm"
+   759→                            onClick={(e) => {
+   760→                              e.stopPropagation()
+   761→                              setSelectedFeedback(fb)
+   762→                            }}
+   763→                          >
+   764→                            Chi tiết
+   765→                          </Button>
+   766→                        </TableCell>
+   767→                      </TableRow>
+   768→                    ))}
+   769→                  </TableBody>
+   770→                </Table>
+   771→              </CardContent>
+   772→            </Card>
+   773→          </div>
+   774→
+   775→          {/* Mobile Card View */}
+   776→          <div className="lg:hidden space-y-3">
+   777→            {feedbacks.map((fb) => (
+   778→              <Card
+   779→                key={fb.id}
+   780→                className="cursor-pointer hover:shadow-md transition-shadow"
+   781→                onClick={() => setSelectedFeedback(fb)}
+   782→              >
+   783→                <CardContent className="p-4">
+   784→                  <div className="flex items-start justify-between gap-2 mb-2">
+   785→                    <div className="min-w-0 flex-1">
+   786→                      <h4 className="font-medium text-sm truncate">{fb.subject}</h4>
+   787→                      <p className="text-xs text-muted-foreground mt-0.5">{fb.user.name} &middot; {fb.user.email}</p>
+   788→                    </div>
+   789→                    <Badge variant="outline" className={`${getFeedbackStatusColor(fb.status)} text-xs shrink-0 gap-1`}>
+   790→                      {getFeedbackStatusIcon(fb.status)}
+   791→                      {getFeedbackStatusLabel(fb.status)}
+   792→                    </Badge>
+   793→                  </div>
+   794→                  <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{fb.content}</p>
+   795→                  <div className="flex items-center gap-2 flex-wrap">
+   796→                    <Badge variant="outline" className={`${getFeedbackTypeColor(fb.type)} text-xs gap-1`}>
+   797→                      {getFeedbackTypeIcon(fb.type)}
+   798→                      {getFeedbackTypeLabel(fb.type)}
+   799→                    </Badge>
+   800→                    <Badge variant="outline" className={`${getPriorityColor(fb.priority)} text-xs`}>
+   801→                      {getPriorityLabel(fb.priority)}
+   802→                    </Badge>
+   803→                    {fb.adminReply && (
+   804→                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 text-xs gap-1">
+   805→                        <Reply className="h-3 w-3" />
+   806→                        Đã trả lời
+   807→                      </Badge>
+   808→                    )}
+   809→                    <span className="text-xs text-muted-foreground ml-auto">
+   810→                      {formatDateTime(fb.createdAt)}
+   811→                    </span>
+   812→                  </div>
+   813→                </CardContent>
+   814→              </Card>
+   815→            ))}
+   816→          </div>
+   817→
+   818→          {/* Pagination */}
+   819→          {totalPages > 1 && (
+   820→            <div className="flex items-center justify-center gap-2">
+   821→              <Button
+   822→                variant="outline"
+   823→                size="sm"
+   824→                onClick={() => setPage(p => Math.max(1, p - 1))}
+   825→                disabled={page <= 1}
+   826→              >
+   827→                <ChevronLeft className="h-4 w-4" />
+   828→              </Button>
+   829→              <span className="text-sm text-muted-foreground">
+   830→                Trang {page} / {totalPages}
+   831→              </span>
+   832→              <Button
+   833→                variant="outline"
+   834→                size="sm"
+   835→                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+   836→                disabled={page >= totalPages}
+   837→              >
+   838→                <ChevronRight className="h-4 w-4" />
+   839→              </Button>
+   840→            </div>
+   841→          )}
+   842→        </>
+   843→      )}
+   844→
+   845→      {/* Detail Dialog */}
+   846→      <Dialog open={!!selectedFeedback} onOpenChange={(open) => { if (!open) setSelectedFeedback(null) }}>
+   847→        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   848→          {selectedFeedback && (
+   849→            <>
+   850→              <DialogHeader>
+   851→                <DialogTitle className="flex items-center gap-2 text-lg">
+   852→                  <MessageSquareWarning className="h-5 w-5 text-emerald-600" />
+   853→                  Chi tiết phản hồi
+   854→                </DialogTitle>
+   855→              </DialogHeader>
+   856→
+   857→              <div className="space-y-4 mt-2">
+   858→                {/* Subject & Info */}
+   859→                <div>
+   860→                  <h3 className="font-semibold text-base">{selectedFeedback.subject}</h3>
+   861→                  <p className="text-sm text-muted-foreground mt-1">
+   862→                    Bởi <span className="font-medium">{selectedFeedback.user.name}</span>
+   863→                    {' '}({selectedFeedback.user.email}) &middot; {formatDateTime(selectedFeedback.createdAt)}
+   864→                  </p>
+   865→                </div>
+   866→
+   867→                {/* Badges */}
+   868→                <div className="flex items-center gap-2 flex-wrap">
+   869→                  <Badge variant="outline" className={`${getFeedbackTypeColor(selectedFeedback.type)} gap-1`}>
+   870→                    {getFeedbackTypeIcon(selectedFeedback.type)}
+   871→                    {getFeedbackTypeLabel(selectedFeedback.type)}
+   872→                  </Badge>
+   873→                  <Badge variant="outline" className={`${getFeedbackStatusColor(selectedFeedback.status)} gap-1`}>
+   874→                    {getFeedbackStatusIcon(selectedFeedback.status)}
+   875→                    {getFeedbackStatusLabel(selectedFeedback.status)}
+   876→                  </Badge>
+   877→                  <Badge variant="outline" className={getPriorityColor(selectedFeedback.priority)}>
+   878→                    {getPriorityLabel(selectedFeedback.priority)}
+   879→                  </Badge>
+   880→                </div>
+   881→
+   882→                {/* Content */}
+   883→                <div className="p-3 bg-muted/50 rounded-lg">
+   884→                  <p className="text-sm whitespace-pre-wrap">{selectedFeedback.content}</p>
+   885→                </div>
+   886→
+   887→                {/* Admin Reply */}
+   888→                {selectedFeedback.adminReply && (
+   889→                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+   890→                    <div className="flex items-center gap-1.5 mb-1.5">
+   891→                      <Reply className="h-4 w-4 text-emerald-600" />
+   892→                      <span className="text-sm font-medium text-emerald-700">
+   893→                        Phản hồi từ {selectedFeedback.replier?.name || 'Admin'}
+   894→                      </span>
+   895→                    </div>
+   896→                    <p className="text-sm text-emerald-800 whitespace-pre-wrap">{selectedFeedback.adminReply}</p>
+   897→                  </div>
+   898→                )}
+   899→
+   900→                {/* Status & Priority Controls */}
+   901→                <div className="grid grid-cols-2 gap-3">
+   902→                  <div className="space-y-1.5">
+   903→                    <Label className="text-xs font-medium">Thay đổi trạng thái</Label>
+   904→                    <Select
+   905→                      value={selectedFeedback.status}
+   906→                      onValueChange={(v) => handleStatusChange(selectedFeedback.id, v)}
+   907→                      disabled={updating}
+   908→                    >
+   909→                      <SelectTrigger>
+   910→                        <SelectValue />
+   911→                      </SelectTrigger>
+   912→                      <SelectContent>
+   913→                        <SelectItem value="PENDING">Chờ xử lý</SelectItem>
+   914→                        <SelectItem value="IN_PROGRESS">Đang xử lý</SelectItem>
+   915→                        <SelectItem value="RESOLVED">Đã giải quyết</SelectItem>
+   916→                        <SelectItem value="CLOSED">Đã đóng</SelectItem>
+   917→                      </SelectContent>
+   918→                    </Select>
+   919→                  </div>
+   920→                  <div className="space-y-1.5">
+   921→                    <Label className="text-xs font-medium">Thay đổi ưu tiên</Label>
+   922→                    <Select
+   923→                      value={selectedFeedback.priority}
+   924→                      onValueChange={(v) => handlePriorityChange(selectedFeedback.id, v)}
+   925→                      disabled={updating}
+   926→                    >
+   927→                      <SelectTrigger>
+   928→                        <SelectValue />
+   929→                      </SelectTrigger>
+   930→                      <SelectContent>
+   931→                        <SelectItem value="LOW">Thấp</SelectItem>
+   932→                        <SelectItem value="MEDIUM">Trung bình</SelectItem>
+   933→                        <SelectItem value="HIGH">Cao</SelectItem>
+   934→                        <SelectItem value="URGENT">Khẩn cấp</SelectItem>
+   935→                      </SelectContent>
+   936→                    </Select>
+   937→                  </div>
+   938→                </div>
+   939→
+   940→                {/* Reply Form */}
+   941→                <div className="space-y-2 pt-2 border-t">
+   942→                  <Label className="text-sm font-medium flex items-center gap-1.5">
+   943→                    <Reply className="h-4 w-4" />
+   944→                    Phản hồi
+   945→                  </Label>
+   946→                  <Textarea
+   947→                    placeholder="Nhập nội dung phản hồi..."
+   948→                    value={replyText}
+   949→                    onChange={(e) => setReplyText(e.target.value)}
+   950→                    rows={3}
+   951→                  />
+   952→                  <Button
+   953→                    onClick={handleReply}
+   954→                    disabled={replying || !replyText.trim()}
+   955→                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+   956→                  >
+   957→                    {replying ? (
+   958→                      <>
+   959→                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+   960→                        Đang gửi...
+   961→                      </>
+   962→                    ) : (
+   963→                      <>
+   964→                        <Send className="h-4 w-4 mr-2" />
+   965→                        Gửi phản hồi
+   966→                      </>
+   967→                    )}
+   968→                  </Button>
+   969→                </div>
+   970→              </div>
+   971→            </>
+   972→          )}
+   973→        </DialogContent>
+   974→      </Dialog>
+   975→    </div>
+   976→  )
+   977→}
+   978→
+   979→// ==================== MAIN COMPONENT ====================
+   980→export default function FeedbackPanel({ userId, userRole }: FeedbackPanelProps) {
+   981→  if (userRole === 'ADMIN') {
+   982→    return <AdminFeedbackPanel userId={userId} />
+   983→  }
+   984→  return <UserFeedbackPanel userId={userId} />
+   985→}
+   986→

@@ -1,0 +1,964 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState, useEffect, useRef, useCallback } from 'react'
+     4→     4→import { io, Socket } from 'socket.io-client'
+     5→     5→import { Button } from '@/components/ui/button'
+     6→     6→import { Input } from '@/components/ui/input'
+     7→     7→import { Card } from '@/components/ui/card'
+     8→     8→import { Badge } from '@/components/ui/badge'
+     9→     9→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    10→    10→import { ScrollArea } from '@/components/ui/scroll-area'
+    11→    11→import { Skeleton } from '@/components/ui/skeleton'
+    12→    12→import {
+    13→    13→  Dialog,
+    14→    14→  DialogContent,
+    15→    15→  DialogHeader,
+    16→    16→  DialogTitle,
+    17→    17→  DialogTrigger,
+    18→    18→} from '@/components/ui/dialog'
+    19→    19→import { toast } from 'sonner'
+    20→    20→import {
+    21→    21→  Send,
+    22→    22→  ImagePlus,
+    23→    23→  Search,
+    24→    24→  MessageCircle,
+    25→    25→  Plus,
+    26→    26→  ArrowLeft,
+    27→    27→  Loader2,
+    28→    28→  X,
+    29→    29→  Paperclip,
+    30→    30→} from 'lucide-react'
+    31→    31→
+    32→    32→// ─── Types ────────────────────────────────────────────────────────────────────
+    33→    33→
+    34→    34→interface ChatPanelProps {
+    35→    35→  userId: string
+    36→    36→  userName: string
+    37→    37→}
+    38→    38→
+    39→    39→interface ConversationUser {
+    40→    40→  id: string
+    41→    41→  name: string
+    42→    42→  avatar?: string | null
+    43→    43→  role: string
+    44→    44→}
+    45→    45→
+    46→    46→interface Conversation {
+    47→    47→  id: string
+    48→    48→  type: string
+    49→    49→  name?: string | null
+    50→    50→  createdAt: string
+    51→    51→  updatedAt: string
+    52→    52→  otherUser: ConversationUser | null
+    53→    53→  lastMessage: {
+    54→    54→    id: string
+    55→    55→    content: string
+    56→    56→    type: string
+    57→    57→    imageUrl?: string | null
+    58→    58→    senderId: string
+    59→    59→    createdAt: string
+    60→    60→  } | null
+    61→    61→  unreadCount: number
+    62→    62→}
+    63→    63→
+    64→    64→interface ChatMessage {
+    65→    65→  id: string
+    66→    66→  content: string
+    67→    67→  type: string
+    68→    68→  imageUrl?: string | null
+    69→    69→  conversationId: string
+    70→    70→  senderId: string
+    71→    71→  isRead: boolean
+    72→    72→  createdAt: string
+    73→    73→  sender?: {
+    74→    74→    id: string
+    75→    75→    name: string
+    76→    76→    avatar?: string | null
+    77→    77→  }
+    78→    78→}
+    79→    79→
+    80→    80→interface SearchResult {
+    81→    81→  id: string
+    82→    82→  name: string
+    83→    83→  email: string
+    84→    84→  avatar?: string | null
+    85→    85→  role: string
+    86→    86→}
+    87→    87→
+    88→    88→// ─── Helper: format time ──────────────────────────────────────────────────────
+    89→    89→
+    90→    90→function formatChatTime(dateStr: string): string {
+    91→    91→  const date = new Date(dateStr)
+    92→    92→  const now = new Date()
+    93→    93→  const diffMs = now.getTime() - date.getTime()
+    94→    94→  const diffMins = Math.floor(diffMs / 60000)
+    95→    95→  const diffHours = Math.floor(diffMs / 3600000)
+    96→    96→  const diffDays = Math.floor(diffMs / 86400000)
+    97→    97→
+    98→    98→  if (diffMins < 1) return 'Vừa xong'
+    99→    99→  if (diffMins < 60) return `${diffMins} phút`
+   100→   100→  if (diffHours < 24) return `${diffHours} giờ`
+   101→   101→  if (diffDays < 7) return `${diffDays} ngày`
+   102→   102→  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
+   103→   103→}
+   104→   104→
+   105→   105→function getAvatarEmoji(role: string): string {
+   106→   106→  const map: Record<string, string> = {
+   107→   107→    BUYER: '🛍️',
+   108→   108→    SELLER: '🏪',
+   109→   109→    SHIPPER: '🏍️',
+   110→   110→    ADMIN: '👑',
+   111→   111→  }
+   112→   112→  return map[role] || '👤'
+   113→   113→}
+   114→   114→
+   115→   115→function getRoleLabel(role: string): string {
+   116→   116→  const map: Record<string, string> = {
+   117→   117→    BUYER: 'Người mua',
+   118→   118→    SELLER: 'Tiểu thương',
+   119→   119→    SHIPPER: 'Shipper',
+   120→   120→    ADMIN: 'Quản trị',
+   121→   121→  }
+   122→   122→  return map[role] || role
+   123→   123→}
+   124→   124→
+   125→   125→// ─── ChatPanel Component ─────────────────────────────────────────────────────
+   126→   126→
+   127→   127→export default function ChatPanel({ userId, userName }: ChatPanelProps) {
+   128→   128→  // ── State ─────────────────────────────────────────────────────────────────
+   129→   129→  const [socket, setSocket] = useState<Socket | null>(null)
+   130→   130→  const [isConnected, setIsConnected] = useState(false)
+   131→   131→  const [conversations, setConversations] = useState<Conversation[]>([])
+   132→   132→  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+   133→   133→  const [messages, setMessages] = useState<ChatMessage[]>([])
+   134→   134→  const [newMessage, setNewMessage] = useState('')
+   135→   135→  const [searchQuery, setSearchQuery] = useState('')
+   136→   136→  const [isLoadingConvs, setIsLoadingConvs] = useState(true)
+   137→   137→  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+   138→   138→  const [isSending, setIsSending] = useState(false)
+   139→   139→  const [isUploading, setIsUploading] = useState(false)
+   140→   140→  const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map())
+   141→   141→  const [showMobileMessages, setShowMobileMessages] = useState(false)
+   142→   142→  const [newChatOpen, setNewChatOpen] = useState(false)
+   143→   143→  const [userSearch, setUserSearch] = useState('')
+   144→   144→  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+   145→   145→  const [isSearching, setIsSearching] = useState(false)
+   146→   146→
+   147→   147→  // ── Refs ──────────────────────────────────────────────────────────────────
+   148→   148→  const messagesEndRef = useRef<HTMLDivElement>(null)
+   149→   149→  const typingTimeoutRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+   150→   150→  const fileInputRef = useRef<HTMLInputElement>(null)
+   151→   151→  const messageInputRef = useRef<HTMLInputElement>(null)
+   152→   152→
+   153→   153→  // ── Derived state ─────────────────────────────────────────────────────────
+   154→   154→  const activeConversation = conversations.find((c) => c.id === activeConversationId)
+   155→   155→
+   156→   156→  const filteredConversations = conversations.filter((conv) => {
+   157→   157→    if (!searchQuery.trim()) return true
+   158→   158→    const q = searchQuery.toLowerCase()
+   159→   159→    return (
+   160→   160→      conv.otherUser?.name.toLowerCase().includes(q) ||
+   161→   161→      conv.name?.toLowerCase().includes(q) ||
+   162→   162→      conv.lastMessage?.content.toLowerCase().includes(q)
+   163→   163→    )
+   164→   164→  })
+   165→   165→
+   166→   166→  const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0)
+   167→   167→
+   168→   168→  // ── Auto-scroll to bottom ─────────────────────────────────────────────────
+   169→   169→  const scrollToBottom = useCallback(() => {
+   170→   170→    setTimeout(() => {
+   171→   171→      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+   172→   172→    }, 100)
+   173→   173→  }, [])
+   174→   174→
+   175→   175→  // ── Socket.io connection ──────────────────────────────────────────────────
+   176→   176→  useEffect(() => {
+   177→   177→    const newSocket = io('/?XTransformPort=3003', {
+   178→   178→      path: '/socket.io',
+   179→   179→      transports: ['websocket', 'polling'],
+   180→   180→      reconnection: true,
+   181→   181→      reconnectionDelay: 1000,
+   182→   182→      reconnectionAttempts: 10,
+   183→   183→    })
+   184→   184→
+   185→   185→    newSocket.on('connect', () => {
+   186→   186→      console.log('[Chat] Connected to socket server')
+   187→   187→      setIsConnected(true)
+   188→   188→      // Authenticate on connect
+   189→   189→      newSocket.emit('authenticate', { userId })
+   190→   190→    })
+   191→   191→
+   192→   192→    newSocket.on('disconnect', () => {
+   193→   193→      console.log('[Chat] Disconnected from socket server')
+   194→   194→      setIsConnected(false)
+   195→   195→    })
+   196→   196→
+   197→   197→    // Handle new message from socket
+   198→   198→    newSocket.on('new-message', (msg: ChatMessage) => {
+   199→   199→      setMessages((prev) => {
+   200→   200→        // Avoid duplicates
+   201→   201→        if (prev.some((m) => m.id === msg.id)) return prev
+   202→   202→        return [...prev, msg]
+   203→   203→      })
+   204→   204→
+   205→   205→      // Update conversation list's last message and unread count
+   206→   206→      setConversations((prev) =>
+   207→   207→        prev.map((conv) => {
+   208→   208→          if (conv.id === msg.conversationId) {
+   209→   209→            const isMine = msg.senderId === userId
+   210→   210→            return {
+   211→   211→              ...conv,
+   212→   212→              lastMessage: {
+   213→   213→                id: msg.id,
+   214→   214→                content: msg.content,
+   215→   215→                type: msg.type,
+   216→   216→                imageUrl: msg.imageUrl,
+   217→   217→                senderId: msg.senderId,
+   218→   218→                createdAt: msg.createdAt,
+   219→   219→              },
+   220→   220→              unreadCount: isMine || conv.id === activeConversationId
+   221→   221→                ? conv.unreadCount
+   222→   222→                : conv.unreadCount + 1,
+   223→   223→              updatedAt: msg.createdAt,
+   224→   224→            }
+   225→   225→          }
+   226→   226→          return conv
+   227→   227→        })
+   228→   228→      )
+   229→   229→
+   230→   230→      // Show toast for messages not in active conversation
+   231→   231→      if (msg.conversationId !== activeConversationId && msg.senderId !== userId) {
+   232→   232→        const conv = conversations.find((c) => c.id === msg.conversationId)
+   233→   233→        if (conv?.otherUser) {
+   234→   234→          toast.info(`💬 ${conv.otherUser.name}: ${msg.type === 'IMAGE' ? '📷 Hình ảnh' : msg.content.slice(0, 50)}`)
+   235→   235→        }
+   236→   236→      }
+   237→   237→
+   238→   238→      // Auto-scroll if in active conversation
+   239→   239→      if (msg.conversationId === activeConversationId) {
+   240→   240→        scrollToBottom()
+   241→   241→      }
+   242→   242→    })
+   243→   243→
+   244→   244→    // Handle typing indicator
+   245→   245→    newSocket.on('user-typing', (data: { conversationId: string; userId: string; isTyping: boolean }) => {
+   246→   246→      setTypingUsers((prev) => {
+   247→   247→        const next = new Map(prev)
+   248→   248→        if (data.isTyping) {
+   249→   249→          next.set(data.conversationId, data.userId)
+   250→   250→        } else {
+   251→   251→          next.delete(data.conversationId)
+   252→   252→        }
+   253→   253→        return next
+   254→   254→      })
+   255→   255→
+   256→   256→      // Clear typing after 3 seconds
+   257→   257→      if (data.isTyping) {
+   258→   258→        const existing = typingTimeoutRef.current.get(data.conversationId)
+   259→   259→        if (existing) clearTimeout(existing)
+   260→   260→        typingTimeoutRef.current.set(
+   261→   261→          data.conversationId,
+   262→   262→          setTimeout(() => {
+   263→   263→            setTypingUsers((prev) => {
+   264→   264→              const next = new Map(prev)
+   265→   265→              next.delete(data.conversationId)
+   266→   266→              return next
+   267→   267→            })
+   268→   268→          }, 3000)
+   269→   269→        )
+   270→   270→      }
+   271→   271→    })
+   272→   272→
+   273→   273→    // Handle messages read
+   274→   274→    newSocket.on('messages-read', (data: { conversationId: string; userId: string }) => {
+   275→   275→      // Update messages as read
+   276→   276→      setMessages((prev) =>
+   277→   277→        prev.map((m) =>
+   278→   278→          m.conversationId === data.conversationId && m.senderId !== data.userId
+   279→   279→            ? { ...m, isRead: true }
+   280→   280→            : m
+   281→   281→        )
+   282→   282→      )
+   283→   283→    })
+   284→   284→
+   285→   285→    // Handle unread count update
+   286→   286→    newSocket.on('unread-count', (data: { userId: string; count: number }) => {
+   287→   287→      // Refresh conversations to get updated unread counts
+   288→   288→      fetchConversations()
+   289→   289→    })
+   290→   290→
+   291→   291→    // Handle errors
+   292→   292→    newSocket.on('error', (data: { message: string }) => {
+   293→   293→      console.error('[Chat] Socket error:', data.message)
+   294→   294→      toast.error(data.message)
+   295→   295→    })
+   296→   296→
+   297→   297→    setSocket(newSocket)
+   298→   298→
+   299→   299→    return () => {
+   300→   300→      newSocket.disconnect()
+   301→   301→      // Clean up timeouts
+   302→   302→      typingTimeoutRef.current.forEach((timeout) => clearTimeout(timeout))
+   303→   303→    }
+   304→   304→  }, [userId])
+   305→   305→
+   306→   306→  // ── Fetch conversations ───────────────────────────────────────────────────
+   307→   307→  const fetchConversations = useCallback(async () => {
+   308→   308→    try {
+   309→   309→      const res = await fetch('/api/chat/conversations')
+   310→   310→      if (res.ok) {
+   311→   311→        const data = await res.json()
+   312→   312→        setConversations(data.conversations || [])
+   313→   313→      }
+   314→   314→    } catch (err) {
+   315→   315→      console.error('Error fetching conversations:', err)
+   316→   316→    } finally {
+   317→   317→      setIsLoadingConvs(false)
+   318→   318→    }
+   319→   319→  }, [])
+   320→   320→
+   321→   321→  useEffect(() => {
+   322→   322→    fetchConversations()
+   323→   323→  }, [fetchConversations])
+   324→   324→
+   325→   325→  // ── Fetch messages when active conversation changes ───────────────────────
+   326→   326→  useEffect(() => {
+   327→   327→    if (!activeConversationId) {
+   328→   328→      setMessages([])
+   329→   329→      return
+   330→   330→    }
+   331→   331→
+   332→   332→    const fetchMessages = async () => {
+   333→   333→      setIsLoadingMessages(true)
+   334→   334→      try {
+   335→   335→        const res = await fetch(`/api/chat/conversations/${activeConversationId}`)
+   336→   336→        if (res.ok) {
+   337→   337→          const data = await res.json()
+   338→   338→          setMessages(data.messages || [])
+   339→   339→          scrollToBottom()
+   340→   340→        }
+   341→   341→      } catch (err) {
+   342→   342→        console.error('Error fetching messages:', err)
+   343→   343→      } finally {
+   344→   344→        setIsLoadingMessages(false)
+   345→   345→      }
+   346→   346→    }
+   347→   347→
+   348→   348→    fetchMessages()
+   349→   349→
+   350→   350→    // Mark as read when opening a conversation
+   351→   351→    if (socket && isConnected) {
+   352→   352→      socket.emit('mark-read', { conversationId: activeConversationId, userId })
+   353→   353→      // Update local unread count
+   354→   354→      setConversations((prev) =>
+   355→   355→        prev.map((conv) =>
+   356→   356→          conv.id === activeConversationId ? { ...conv, unreadCount: 0 } : conv
+   357→   357→        )
+   358→   358→      )
+   359→   359→    }
+   360→   360→  }, [activeConversationId, socket, isConnected, userId, scrollToBottom])
+   361→   361→
+   362→   362→  // ── Send message ──────────────────────────────────────────────────────────
+   363→   363→  const sendMessage = useCallback(
+   364→   364→    async (content: string, type: 'TEXT' | 'IMAGE' = 'TEXT', imageUrl?: string) => {
+   365→   365→      if (!socket || !activeConversationId || !content.trim()) return
+   366→   366→
+   367→   367→      setIsSending(true)
+   368→   368→      try {
+   369→   369→        socket.emit('send-message', {
+   370→   370→          conversationId: activeConversationId,
+   371→   371→          content: content.trim(),
+   372→   372→          type,
+   373→   373→          imageUrl: imageUrl || null,
+   374→   374→          senderId: userId,
+   375→   375→        })
+   376→   376→        setNewMessage('')
+   377→   377→        // Clear typing
+   378→   378→        socket.emit('typing', {
+   379→   379→          conversationId: activeConversationId,
+   380→   380→          userId,
+   381→   381→          isTyping: false,
+   382→   382→        })
+   383→   383→      } catch (err) {
+   384→   384→        console.error('Error sending message:', err)
+   385→   385→        toast.error('Không thể gửi tin nhắn')
+   386→   386→      } finally {
+   387→   387→        setIsSending(false)
+   388→   388→      }
+   389→   389→    },
+   390→   390→    [socket, activeConversationId, userId]
+   391→   391→  )
+   392→   392→
+   393→   393→  // ── Handle text input change with typing indicator ────────────────────────
+   394→   394→  const handleInputChange = useCallback(
+   395→   395→    (value: string) => {
+   396→   396→      setNewMessage(value)
+   397→   397→      if (socket && activeConversationId) {
+   398→   398→        socket.emit('typing', {
+   399→   399→          conversationId: activeConversationId,
+   400→   400→          userId,
+   401→   401→          isTyping: value.length > 0,
+   402→   402→        })
+   403→   403→      }
+   404→   404→    },
+   405→   405→    [socket, activeConversationId, userId]
+   406→   406→  )
+   407→   407→
+   408→   408→  // ── Handle send on Enter ──────────────────────────────────────────────────
+   409→   409→  const handleKeyDown = useCallback(
+   410→   410→    (e: React.KeyboardEvent<HTMLInputElement>) => {
+   411→   411→      if (e.key === 'Enter' && !e.shiftKey) {
+   412→   412→        e.preventDefault()
+   413→   413→        if (newMessage.trim()) {
+   414→   414→          sendMessage(newMessage)
+   415→   415→        }
+   416→   416→      }
+   417→   417→    },
+   418→   418→    [newMessage, sendMessage]
+   419→   419→  )
+   420→   420→
+   421→   421→  // ── Image upload ──────────────────────────────────────────────────────────
+   422→   422→  const handleImageUpload = useCallback(
+   423→   423→    async (e: React.ChangeEvent<HTMLInputElement>) => {
+   424→   424→      const file = e.target.files?.[0]
+   425→   425→      if (!file) return
+   426→   426→
+   427→   427→      setIsUploading(true)
+   428→   428→      try {
+   429→   429→        const formData = new FormData()
+   430→   430→        formData.append('image', file)
+   431→   431→
+   432→   432→        const res = await fetch('/api/chat/upload', {
+   433→   433→          method: 'POST',
+   434→   434→          body: formData,
+   435→   435→        })
+   436→   436→
+   437→   437→        if (res.ok) {
+   438→   438→          const data = await res.json()
+   439→   439→          sendMessage(data.imageUrl, 'IMAGE', data.imageUrl)
+   440→   440→        } else {
+   441→   441→          const data = await res.json()
+   442→   442→          toast.error(data.error || 'Không thể tải ảnh lên')
+   443→   443→        }
+   444→   444→      } catch (err) {
+   445→   445→        console.error('Error uploading image:', err)
+   446→   446→        toast.error('Không thể tải ảnh lên')
+   447→   447→      } finally {
+   448→   448→        setIsUploading(false)
+   449→   449→        // Reset file input
+   450→   450→        if (fileInputRef.current) {
+   451→   451→          fileInputRef.current.value = ''
+   452→   452→        }
+   453→   453→      }
+   454→   454→    },
+   455→   455→    [sendMessage]
+   456→   456→  )
+   457→   457→
+   458→   458→  // ── Search users for new conversation ─────────────────────────────────────
+   459→   459→  const searchUsers = useCallback(async (query: string) => {
+   460→   460→    setUserSearch(query)
+   461→   461→    if (!query.trim()) {
+   462→   462→      setSearchResults([])
+   463→   463→      return
+   464→   464→    }
+   465→   465→
+   466→   466→    setIsSearching(true)
+   467→   467→    try {
+   468→   468→      const res = await fetch(`/api/chat/users?search=${encodeURIComponent(query)}`)
+   469→   469→      if (res.ok) {
+   470→   470→        const data = await res.json()
+   471→   471→        setSearchResults(data.users || [])
+   472→   472→      }
+   473→   473→    } catch (err) {
+   474→   474→      console.error('Error searching users:', err)
+   475→   475→    } finally {
+   476→   476→      setIsSearching(false)
+   477→   477→    }
+   478→   478→  }, [])
+   479→   479→
+   480→   480→  // ── Start new conversation ────────────────────────────────────────────────
+   481→   481→  const startConversation = useCallback(
+   482→   482→    async (targetUserId: string) => {
+   483→   483→      try {
+   484→   484→        const res = await fetch('/api/chat/conversations', {
+   485→   485→          method: 'POST',
+   486→   486→          headers: { 'Content-Type': 'application/json' },
+   487→   487→          body: JSON.stringify({ targetUserId }),
+   488→   488→        })
+   489→   489→
+   490→   490→        if (res.ok) {
+   491→   491→          const data = await res.json()
+   492→   492→          const conv = data.conversation
+   493→   493→
+   494→   494→          // If new conversation, add to list
+   495→   495→          if (!data.existing) {
+   496→   496→            setConversations((prev) => [conv, ...prev])
+   497→   497→          } else {
+   498→   498→            // Update existing or add if not present
+   499→   499→            setConversations((prev) => {
+   500→   500→              const exists = prev.some((c) => c.id === conv.id)
+   501→   501→              if (!exists) return [conv, ...prev]
+   502→   502→              return prev.map((c) => (c.id === conv.id ? conv : c))
+   503→   503→            })
+   504→   504→          }
+   505→   505→
+   506→   506→          setActiveConversationId(conv.id)
+   507→   507→          setShowMobileMessages(true)
+   508→   508→          setNewChatOpen(false)
+   509→   509→          setUserSearch('')
+   510→   510→          setSearchResults([])
+   511→   511→        } else {
+   512→   512→          const data = await res.json()
+   513→   513→          toast.error(data.error || 'Không thể tạo hội thoại')
+   514→   514→        }
+   515→   515→      } catch (err) {
+   516→   516→        console.error('Error creating conversation:', err)
+   517→   517→        toast.error('Không thể tạo hội thoại')
+   518→   518→      }
+   519→   519→    },
+   520→   520→    []
+   521→   521→  )
+   522→   522→
+   523→   523→  // ── Select conversation ───────────────────────────────────────────────────
+   524→   524→  const selectConversation = useCallback((convId: string) => {
+   525→   525→    setActiveConversationId(convId)
+   526→   526→    setShowMobileMessages(true)
+   527→   527→  }, [])
+   528→   528→
+   529→   529→  // ── Back to conversation list (mobile) ────────────────────────────────────
+   530→   530→  const backToList = useCallback(() => {
+   531→   531→    setShowMobileMessages(false)
+   532→   532→  }, [])
+   533→   533→
+   534→   534→  // ─── RENDER ───────────────────────────────────────────────────────────────
+   535→   535→
+   536→   536→  return (
+   537→   537→    <div className="flex h-[calc(100vh-180px)] min-h-[400px] rounded-xl border bg-white shadow-sm overflow-hidden">
+   538→   538→      {/* ── LEFT SIDEBAR: Conversation List ────────────────────────────────── */}
+   539→   539→      <div
+   540→   540→        className={`w-full md:w-80 lg:w-96 border-r flex flex-col bg-muted/20 ${
+   541→   541→          showMobileMessages ? 'hidden md:flex' : 'flex'
+   542→   542→        }`}
+   543→   543→      >
+   544→   544→        {/* Sidebar Header */}
+   545→   545→        <div className="p-4 border-b space-y-3">
+   546→   546→          <div className="flex items-center justify-between">
+   547→   547→            <div className="flex items-center gap-2">
+   548→   548→              <MessageCircle className="h-5 w-5 text-green-600" />
+   549→   549→              <h3 className="font-semibold text-sm">Tin nhắn</h3>
+   550→   550→              {totalUnread > 0 && (
+   551→   551→                <Badge className="bg-green-600 text-white text-xs px-1.5 py-0 h-5 min-w-[20px] flex items-center justify-center">
+   552→   552→                  {totalUnread}
+   553→   553→                </Badge>
+   554→   554→              )}
+   555→   555→            </div>
+   556→   556→            <div className="flex items-center gap-1">
+   557→   557→              {/* Connection indicator */}
+   558→   558→              <span
+   559→   559→                className={`h-2 w-2 rounded-full ${
+   560→   560→                  isConnected ? 'bg-green-500' : 'bg-red-400'
+   561→   561→                }`}
+   562→   562→                title={isConnected ? 'Đã kết nối' : 'Mất kết nối'}
+   563→   563→              />
+   564→   564→              {/* New chat button */}
+   565→   565→              <Dialog open={newChatOpen} onOpenChange={setNewChatOpen}>
+   566→   566→                <DialogTrigger asChild>
+   567→   567→                  <Button variant="ghost" size="icon" className="h-8 w-8">
+   568→   568→                    <Plus className="h-4 w-4" />
+   569→   569→                  </Button>
+   570→   570→                </DialogTrigger>
+   571→   571→                <DialogContent className="sm:max-w-md">
+   572→   572→                  <DialogHeader>
+   573→   573→                    <DialogTitle>Tin nhắn mới</DialogTitle>
+   574→   574→                  </DialogHeader>
+   575→   575→                  <div className="space-y-4">
+   576→   576→                    <div className="relative">
+   577→   577→                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   578→   578→                      <Input
+   579→   579→                        placeholder="Tìm người dùng..."
+   580→   580→                        className="pl-9"
+   581→   581→                        value={userSearch}
+   582→   582→                        onChange={(e) => searchUsers(e.target.value)}
+   583→   583→                      />
+   584→   584→                    </div>
+   585→   585→                    <div className="max-h-64 overflow-y-auto space-y-1">
+   586→   586→                      {isSearching && (
+   587→   587→                        <div className="flex items-center justify-center p-4">
+   588→   588→                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+   589→   589→                        </div>
+   590→   590→                      )}
+   591→   591→                      {!isSearching && userSearch && searchResults.length === 0 && (
+   592→   592→                        <p className="text-sm text-muted-foreground text-center py-4">
+   593→   593→                          Không tìm thấy người dùng
+   594→   594→                        </p>
+   595→   595→                      )}
+   596→   596→                      {searchResults.map((user) => (
+   597→   597→                        <button
+   598→   598→                          key={user.id}
+   599→   599→                          className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted transition-colors text-left"
+   600→   600→                          onClick={() => startConversation(user.id)}
+   601→   601→                        >
+   602→   602→                          <Avatar className="h-9 w-9">
+   603→   603→                            <AvatarFallback className="bg-green-100 text-green-700 text-sm">
+   604→   604→                              {user.avatar || getAvatarEmoji(user.role)}
+   605→   605→                            </AvatarFallback>
+   606→   606→                          </Avatar>
+   607→   607→                          <div className="flex-1 min-w-0">
+   608→   608→                            <p className="text-sm font-medium truncate">{user.name}</p>
+   609→   609→                            <p className="text-xs text-muted-foreground truncate">
+   610→   610→                              {getRoleLabel(user.role)} • {user.email}
+   611→   611→                            </p>
+   612→   612→                          </div>
+   613→   613→                        </button>
+   614→   614→                      ))}
+   615→   615→                    </div>
+   616→   616→                    {/* Quick userId input for testing */}
+   617→   617→                    <div className="border-t pt-3">
+   618→   618→                      <p className="text-xs text-muted-foreground mb-2">
+   619→   619→                        Hoặc nhập User ID:
+   620→   620→                      </p>
+   621→   621→                      <div className="flex gap-2">
+   622→   622→                        <Input
+   623→   623→                          placeholder="Nhập userId..."
+   624→   624→                          className="text-xs"
+   625→   625→                          id="direct-userid-input"
+   626→   626→                          onKeyDown={(e) => {
+   627→   627→                            if (e.key === 'Enter') {
+   628→   628→                              const val = (e.target as HTMLInputElement).value.trim()
+   629→   629→                              if (val) startConversation(val)
+   630→   630→                            }
+   631→   631→                          }}
+   632→   632→                        />
+   633→   633→                        <Button
+   634→   634→                          size="sm"
+   635→   635→                          variant="outline"
+   636→   636→                          onClick={() => {
+   637→   637→                            const input = document.getElementById('direct-userid-input') as HTMLInputElement
+   638→   638→                            if (input?.value.trim()) startConversation(input.value.trim())
+   639→   639→                          }}
+   640→   640→                        >
+   641→   641→                          Chat
+   642→   642→                        </Button>
+   643→   643→                      </div>
+   644→   644→                    </div>
+   645→   645→                  </div>
+   646→   646→                </DialogContent>
+   647→   647→              </Dialog>
+   648→   648→            </div>
+   649→   649→          </div>
+   650→   650→
+   651→   651→          {/* Search bar */}
+   652→   652→          <div className="relative">
+   653→   653→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   654→   654→            <Input
+   655→   655→              placeholder="Tìm tin nhắn..."
+   656→   656→              className="pl-9 h-9 text-sm"
+   657→   657→              value={searchQuery}
+   658→   658→              onChange={(e) => setSearchQuery(e.target.value)}
+   659→   659→            />
+   660→   660→          </div>
+   661→   661→        </div>
+   662→   662→
+   663→   663→        {/* Conversation List */}
+   664→   664→        <div className="flex-1 overflow-y-auto">
+   665→   665→          {isLoadingConvs ? (
+   666→   666→            <div className="p-4 space-y-3">
+   667→   667→              {Array.from({ length: 5 }).map((_, i) => (
+   668→   668→                <div key={i} className="flex items-center gap-3">
+   669→   669→                  <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+   670→   670→                  <div className="flex-1 space-y-1.5">
+   671→   671→                    <Skeleton className="h-4 w-24" />
+   672→   672→                    <Skeleton className="h-3 w-36" />
+   673→   673→                  </div>
+   674→   674→                </div>
+   675→   675→              ))}
+   676→   676→            </div>
+   677→   677→          ) : filteredConversations.length === 0 ? (
+   678→   678→            <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+   679→   679→              <MessageCircle className="h-12 w-12 text-muted-foreground/40 mb-3" />
+   680→   680→              <p className="text-sm text-muted-foreground">
+   681→   681→                {searchQuery ? 'Không tìm thấy tin nhắn' : 'Chưa có tin nhắn nào'}
+   682→   682→              </p>
+   683→   683→              {!searchQuery && (
+   684→   684→                <p className="text-xs text-muted-foreground mt-1">
+   685→   685→                  Nhấn + để bắt đầu trò chuyện
+   686→   686→                </p>
+   687→   687→              )}
+   688→   688→            </div>
+   689→   689→          ) : (
+   690→   690→            filteredConversations.map((conv) => (
+   691→   691→              <button
+   692→   692→                key={conv.id}
+   693→   693→                className={`w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors text-left ${
+   694→   694→                  activeConversationId === conv.id ? 'bg-green-50 border-l-2 border-l-green-600' : ''
+   695→   695→                }`}
+   696→   696→                onClick={() => selectConversation(conv.id)}
+   697→   697→              >
+   698→   698→                <Avatar className="h-10 w-10 shrink-0">
+   699→   699→                  <AvatarFallback className="bg-green-100 text-green-700">
+   700→   700→                    {conv.otherUser?.avatar || getAvatarEmoji(conv.otherUser?.role || '')}
+   701→   701→                  </AvatarFallback>
+   702→   702→                </Avatar>
+   703→   703→                <div className="flex-1 min-w-0">
+   704→   704→                  <div className="flex items-center justify-between">
+   705→   705→                    <p className="text-sm font-medium truncate">
+   706→   706→                      {conv.otherUser?.name || conv.name || 'Hội thoại'}
+   707→   707→                    </p>
+   708→   708→                    {conv.lastMessage && (
+   709→   709→                      <span className="text-xs text-muted-foreground shrink-0 ml-2">
+   710→   710→                        {formatChatTime(conv.lastMessage.createdAt)}
+   711→   711→                      </span>
+   712→   712→                    )}
+   713→   713→                  </div>
+   714→   714→                  <div className="flex items-center justify-between mt-0.5">
+   715→   715→                    <p className="text-xs text-muted-foreground truncate flex-1">
+   716→   716→                      {conv.lastMessage
+   717→   717→                        ? conv.lastMessage.type === 'IMAGE'
+   718→   718→                          ? '📷 Hình ảnh'
+   719→   719→                          : conv.lastMessage.content
+   720→   720→                        : 'Chưa có tin nhắn'}
+   721→   721→                    </p>
+   722→   722→                    {conv.unreadCount > 0 && (
+   723→   723→                      <Badge className="bg-green-600 text-white text-[10px] px-1.5 py-0 h-4 min-w-[18px] flex items-center justify-center ml-2 shrink-0">
+   724→   724→                        {conv.unreadCount}
+   725→   725→                      </Badge>
+   726→   726→                    )}
+   727→   727→                  </div>
+   728→   728→                </div>
+   729→   729→              </button>
+   730→   730→            ))
+   731→   731→          )}
+   732→   732→        </div>
+   733→   733→      </div>
+   734→   734→
+   735→   735→      {/* ── RIGHT PANEL: Message Area ──────────────────────────────────────── */}
+   736→   736→      <div
+   737→   737→        className={`flex-1 flex flex-col ${
+   738→   738→          showMobileMessages ? 'flex' : 'hidden md:flex'
+   739→   739→        }`}
+   740→   740→      >
+   741→   741→        {activeConversation ? (
+   742→   742→          <>
+   743→   743→            {/* Chat Header */}
+   744→   744→            <div className="px-4 py-3 border-b flex items-center gap-3 bg-white">
+   745→   745→              <Button
+   746→   746→                variant="ghost"
+   747→   747→                size="icon"
+   748→   748→                className="h-8 w-8 md:hidden"
+   749→   749→                onClick={backToList}
+   750→   750→              >
+   751→   751→                <ArrowLeft className="h-4 w-4" />
+   752→   752→              </Button>
+   753→   753→              <Avatar className="h-9 w-9">
+   754→   754→                <AvatarFallback className="bg-green-100 text-green-700 text-sm">
+   755→   755→                  {activeConversation.otherUser?.avatar ||
+   756→   756→                    getAvatarEmoji(activeConversation.otherUser?.role || '')}
+   757→   757→                </AvatarFallback>
+   758→   758→              </Avatar>
+   759→   759→              <div className="flex-1 min-w-0">
+   760→   760→                <p className="text-sm font-semibold truncate">
+   761→   761→                  {activeConversation.otherUser?.name || activeConversation.name || 'Hội thoại'}
+   762→   762→                </p>
+   763→   763→                <p className="text-xs text-muted-foreground">
+   764→   764→                  {typingUsers.has(activeConversation.id) ? (
+   765→   765→                    <span className="text-green-600 animate-pulse">Đang nhập...</span>
+   766→   766→                  ) : (
+   767→   767→                    getRoleLabel(activeConversation.otherUser?.role || '')
+   768→   768→                  )}
+   769→   769→                </p>
+   770→   770→              </div>
+   771→   771→            </div>
+   772→   772→
+   773→   773→            {/* Messages Area */}
+   774→   774→            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-muted/10">
+   775→   775→              {isLoadingMessages ? (
+   776→   776→                <div className="space-y-3">
+   777→   777→                  {Array.from({ length: 6 }).map((_, i) => (
+   778→   778→                    <div
+   779→   779→                      key={i}
+   780→   780→                      className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}
+   781→   781→                    >
+   782→   782→                      <Skeleton
+   783→   783→                        className={`h-10 ${i % 2 === 0 ? 'w-48' : 'w-36'} rounded-xl`}
+   784→   784→                      />
+   785→   785→                    </div>
+   786→   786→                  ))}
+   787→   787→                </div>
+   788→   788→              ) : messages.length === 0 ? (
+   789→   789→                <div className="flex flex-col items-center justify-center h-full text-center">
+   790→   790→                  <MessageCircle className="h-16 w-16 text-muted-foreground/20 mb-3" />
+   791→   791→                  <p className="text-sm text-muted-foreground">
+   792→   792→                    Bắt đầu cuộc trò chuyện
+   793→   793→                  </p>
+   794→   794→                  <p className="text-xs text-muted-foreground mt-1">
+   795→   795→                    Gửi tin nhắn đầu tiên nhé!
+   796→   796→                  </p>
+   797→   797→                </div>
+   798→   798→              ) : (
+   799→   799→                messages.map((msg) => {
+   800→   800→                  const isMine = msg.senderId === userId
+   801→   801→                  return (
+   802→   802→                    <div
+   803→   803→                      key={msg.id}
+   804→   804→                      className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}
+   805→   805→                    >
+   806→   806→                      <div className={`flex items-end gap-2 max-w-[75%] ${isMine ? 'flex-row-reverse' : ''}`}>
+   807→   807→                        {/* Avatar for other user */}
+   808→   808→                        {!isMine && (
+   809→   809→                          <Avatar className="h-7 w-7 shrink-0">
+   810→   810→                            <AvatarFallback className="bg-gray-100 text-gray-600 text-xs">
+   811→   811→                              {msg.sender?.avatar || getAvatarEmoji(activeConversation.otherUser?.role || '')}
+   812→   812→                            </AvatarFallback>
+   813→   813→                          </Avatar>
+   814→   814→                        )}
+   815→   815→
+   816→   816→                        <div
+   817→   817→                          className={`rounded-2xl px-3.5 py-2 ${
+   818→   818→                            isMine
+   819→   819→                              ? 'bg-green-600 text-white rounded-br-md'
+   820→   820→                              : 'bg-gray-100 text-gray-900 rounded-bl-md'
+   821→   821→                          }`}
+   822→   822→                        >
+   823→   823→                          {/* Sender name (for group chats) */}
+   824→   824→                          {!isMine && msg.sender && (
+   825→   825→                            <p className="text-xs font-medium text-green-700 mb-0.5">
+   826→   826→                              {msg.sender.name}
+   827→   827→                            </p>
+   828→   828→                          )}
+   829→   829→
+   830→   830→                          {/* Message content */}
+   831→   831→                          {msg.type === 'IMAGE' && msg.imageUrl ? (
+   832→   832→                            <div className="space-y-1">
+   833→   833→                              <img
+   834→   834→                                src={msg.imageUrl}
+   835→   835→                                alt="Hình ảnh"
+   836→   836→                                className="max-w-full rounded-lg max-h-60 object-cover cursor-pointer"
+   837→   837→                                onClick={() => window.open(msg.imageUrl, '_blank')}
+   838→   838→                              />
+   839→   839→                              {msg.content && msg.content !== msg.imageUrl && (
+   840→   840→                                <p className="text-sm">{msg.content}</p>
+   841→   841→                              )}
+   842→   842→                            </div>
+   843→   843→                          ) : (
+   844→   844→                            <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+   845→   845→                          )}
+   846→   846→
+   847→   847→                          {/* Timestamp */}
+   848→   848→                          <p
+   849→   849→                            className={`text-[10px] mt-1 ${
+   850→   850→                              isMine ? 'text-green-100' : 'text-muted-foreground'
+   851→   851→                            } text-right`}
+   852→   852→                          >
+   853→   853→                            {formatChatTime(msg.createdAt)}
+   854→   854→                            {isMine && msg.isRead && ' ✓✓'}
+   855→   855→                          </p>
+   856→   856→                        </div>
+   857→   857→                      </div>
+   858→   858→                    </div>
+   859→   859→                  )
+   860→   860→                })
+   861→   861→              )}
+   862→   862→
+   863→   863→              {/* Typing indicator */}
+   864→   864→              {typingUsers.has(activeConversation.id) && (
+   865→   865→                <div className="flex justify-start items-center gap-2">
+   866→   866→                  <Avatar className="h-7 w-7">
+   867→   867→                    <AvatarFallback className="bg-gray-100 text-gray-600 text-xs">
+   868→   868→                      {activeConversation.otherUser?.avatar || '👤'}
+   869→   869→                    </AvatarFallback>
+   870→   870→                  </Avatar>
+   871→   871→                  <div className="bg-gray-100 rounded-2xl rounded-bl-md px-4 py-2.5">
+   872→   872→                    <div className="flex gap-1">
+   873→   873→                      <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+   874→   874→                      <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+   875→   875→                      <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+   876→   876→                    </div>
+   877→   877→                  </div>
+   878→   878→                </div>
+   879→   879→              )}
+   880→   880→
+   881→   881→              <div ref={messagesEndRef} />
+   882→   882→            </div>
+   883→   883→
+   884→   884→            {/* Message Input */}
+   885→   885→            <div className="p-3 border-t bg-white">
+   886→   886→              <div className="flex items-center gap-2">
+   887→   887→                {/* Image upload button */}
+   888→   888→                <Button
+   889→   889→                  variant="ghost"
+   890→   890→                  size="icon"
+   891→   891→                  className="h-9 w-9 shrink-0 text-muted-foreground hover:text-green-600"
+   892→   892→                  onClick={() => fileInputRef.current?.click()}
+   893→   893→                  disabled={isUploading}
+   894→   894→                >
+   895→   895→                  {isUploading ? (
+   896→   896→                    <Loader2 className="h-4 w-4 animate-spin" />
+   897→   897→                  ) : (
+   898→   898→                    <ImagePlus className="h-4 w-4" />
+   899→   899→                  )}
+   900→   900→                </Button>
+   901→   901→                <input
+   902→   902→                  ref={fileInputRef}
+   903→   903→                  type="file"
+   904→   904→                  accept="image/*"
+   905→   905→                  className="hidden"
+   906→   906→                  onChange={handleImageUpload}
+   907→   907→                />
+   908→   908→
+   909→   909→                {/* Text input */}
+   910→   910→                <Input
+   911→   911→                  ref={messageInputRef}
+   912→   912→                  placeholder="Nhập tin nhắn..."
+   913→   913→                  className="flex-1 h-9 text-sm"
+   914→   914→                  value={newMessage}
+   915→   915→                  onChange={(e) => handleInputChange(e.target.value)}
+   916→   916→                  onKeyDown={handleKeyDown}
+   917→   917→                  disabled={isSending}
+   918→   918→                />
+   919→   919→
+   920→   920→                {/* Send button */}
+   921→   921→                <Button
+   922→   922→                  size="icon"
+   923→   923→                  className="h-9 w-9 shrink-0 bg-green-600 hover:bg-green-700"
+   924→   924→                  onClick={() => {
+   925→   925→                    if (newMessage.trim()) sendMessage(newMessage)
+   926→   926→                  }}
+   927→   927→                  disabled={!newMessage.trim() || isSending}
+   928→   928→                >
+   929→   929→                  {isSending ? (
+   930→   930→                    <Loader2 className="h-4 w-4 animate-spin" />
+   931→   931→                  ) : (
+   932→   932→                    <Send className="h-4 w-4" />
+   933→   933→                  )}
+   934→   934→                </Button>
+   935→   935→              </div>
+   936→   936→            </div>
+   937→   937→          </>
+   938→   938→        ) : (
+   939→   939→          /* No conversation selected */
+   940→   940→          <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
+   941→   941→            <div className="h-20 w-20 rounded-full bg-green-50 flex items-center justify-center mb-4">
+   942→   942→              <MessageCircle className="h-10 w-10 text-green-400" />
+   943→   943→            </div>
+   944→   944→            <h3 className="text-lg font-semibold text-gray-700">ZMarket Chat</h3>
+   945→   945→            <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+   946→   946→              Chọn một hội thoại hoặc bắt đầu trò chuyện mới
+   947→   947→            </p>
+   948→   948→            <div className="flex items-center gap-2 mt-4">
+   949→   949→              <span
+   950→   950→                className={`h-2 w-2 rounded-full ${
+   951→   951→                  isConnected ? 'bg-green-500' : 'bg-red-400'
+   952→   952→                }`}
+   953→   953→              />
+   954→   954→              <span className="text-xs text-muted-foreground">
+   955→   955→                {isConnected ? 'Đã kết nối' : 'Đang kết nối...'}
+   956→   956→              </span>
+   957→   957→            </div>
+   958→   958→          </div>
+   959→   959→        )}
+   960→   960→      </div>
+   961→   961→    </div>
+   962→   962→  )
+   963→   963→}
+   964→   964→

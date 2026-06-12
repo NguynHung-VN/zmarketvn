@@ -1,0 +1,29 @@
+{
+  "success": true,
+  "query": "Vietnamese traditional market colorful",
+  "count": 3,
+  "ranked": true,
+  "results": [
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/3af2830a2b53.jpg",
+      "caption": "A colorful market stall displays Vietnamese conical hats, fans, and scarves with \"alamy\" watermarks.",
+      "source": "Alamy",
+      "original_width": "1300px",
+      "original_height": "1018px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/a18eb3b1be67.jpg",
+      "caption": "A bustling street scene in front of the Dong Xuan Market, decorated with colorful balloons and flags. Text: ĐỒNG XUÂN PHỐ CỔ. suitable for background image",
+      "source": "Authentic Asia",
+      "original_width": "1280px",
+      "original_height": "720px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/5ca66f18e404.jpg",
+      "caption": "Three women in colorful traditional clothing sell embroidered bags at a market with watermarks.",
+      "source": "Alamy",
+      "original_width": "867px",
+      "original_height": "1390px"
+    }
+  ]
+}

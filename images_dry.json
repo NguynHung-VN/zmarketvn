@@ -1,0 +1,29 @@
+{
+  "success": true,
+  "query": "Vietnamese dry goods rice noodles",
+  "count": 3,
+  "ranked": true,
+  "results": [
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/e3aeb2572a27.jpg",
+      "caption": "A package of Tanisa Rice Vermicelli with fresh ingredients and prepared noodles displayed in front.",
+      "source": "Alibaba.com",
+      "original_width": "1500px",
+      "original_height": "1500px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/41a0e79b6269.png",
+      "caption": "A cardboard box and three plastic bags of VIFON brand dried rice noodles (Bánh Phở Bông Lúa Vàng).",
+      "source": "Longdan",
+      "original_width": "1000px",
+      "original_height": "1000px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/f90bfb6c4278.png",
+      "caption": "The image contains a large amount of text information and you do not need to output the text completely.",
+      "source": "el-tado vietnam",
+      "original_width": "1156px",
+      "original_height": "1156px"
+    }
+  ]
+}

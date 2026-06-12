@@ -1,0 +1,253 @@
+// ─── Production Schema (PostgreSQL) for Vercel Deployment ──────────────────
+// This is the PostgreSQL version of the schema for use on Vercel.
+// Before deploying to Vercel, this file replaces prisma/schema.prisma.
+//
+// Usage: cp prisma/schema.production.prisma prisma/schema.prisma
+// Then set DATABASE_URL to your PostgreSQL connection string.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  phone     String?
+  avatar    String?
+  role      String   @default("BUYER")
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shop     Shop?
+  orders   Order[]
+  cartItems CartItem[]
+  reviews  Review[]
+  wishlistItems WishlistItem[]
+  deliveries Order[] @relation("ShipperDeliveries")
+  conversations Participant[]
+  messages Message[]
+  feedbacks Feedback[] @relation("UserFeedbacks")
+  repliedFeedbacks Feedback[] @relation("AdminReplies")
+
+  @@map("users")
+}
+
+model Shop {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  image       String?
+  address     String
+  phone       String?
+  rating      Float    @default(0)
+  isActive    Boolean  @default(true)
+  ownerId     String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner    User      @relation(fields: [ownerId], references: [id])
+  products Product[]
+  orders   Order[]
+
+  @@map("shops")
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  icon      String?
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  originalPrice Float?
+  image       String?
+  unit        String   @default("kg")
+  inStock     Boolean  @default(true)
+  rating      Float    @default(0)
+  soldCount   Int      @default(0)
+  shopId      String
+  categoryId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  shop      Shop      @relation(fields: [shopId], references: [id])
+  category  Category  @relation(fields: [categoryId], references: [id])
+  cartItems CartItem[]
+  orderItems OrderItem[]
+  reviews   Review[]
+  wishlistItems WishlistItem[]
+  images ProductImage[]
+
+  @@map("products")
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  quantity  Int      @default(1)
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("cart_items")
+}
+
+model Order {
+  id            String   @id @default(cuid())
+  status        String   @default("PENDING")
+  total         Float
+  shippingFee   Float    @default(0)
+  address       String
+  phone         String
+  note          String?
+  paymentMethod String   @default("COD")
+  paymentStatus String   @default("UNPAID")
+  buyerId       String
+  shopId        String
+  shipperId     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  buyer    User       @relation(fields: [buyerId], references: [id])
+  shop     Shop       @relation(fields: [shopId], references: [id])
+  shipper  User?      @relation("ShipperDeliveries", fields: [shipperId], references: [id])
+  items    OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String @id @default(cuid())
+  quantity  Int
+  price     Float
+  orderId   String
+  productId String
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  rating    Int
+  comment   String?
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("reviews")
+}
+
+model WishlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
+  @@map("wishlist_items")
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  type      String
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  participants Participant[]
+  messages     Message[]
+
+  @@map("conversations")
+}
+
+model Participant {
+  id             String    @id @default(cuid())
+  conversationId String
+  userId         String
+  lastReadAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
+
+  @@unique([conversationId, userId])
+  @@map("participants")
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  content        String
+  type           String   @default("TEXT")
+  imageUrl       String?
+  conversationId String
+  senderId       String
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  sender      User         @relation(fields: [senderId], references: [id])
+
+  @@map("messages")
+}
+
+model Feedback {
+  id         String   @id @default(cuid())
+  subject    String
+  content    String
+  type       String   @default("FEEDBACK")
+  status     String   @default("PENDING")
+  priority   String   @default("MEDIUM")
+  userId     String
+  adminReply String?
+  repliedBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user    User  @relation("UserFeedbacks", fields: [userId], references: [id])
+  replier User? @relation("AdminReplies", fields: [repliedBy], references: [id])
+
+  @@map("feedbacks")
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  url       String
+  productId String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("product_images")
+}

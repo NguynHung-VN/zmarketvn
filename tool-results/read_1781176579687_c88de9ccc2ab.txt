@@ -1,0 +1,1451 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState, useEffect, useCallback } from 'react'
+     4→     4→import { useAppStore } from '@/lib/store'
+     5→     5→import { formatPrice, getStatusLabel, getStatusColor, getPaymentStatusLabel, getPaymentStatusColor, getPaymentMethodLabel, formatDateTime, renderStars } from '@/lib/format'
+     6→     6→import { Button } from '@/components/ui/button'
+     7→     7→import { Input } from '@/components/ui/input'
+     8→     8→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     9→     9→import { Badge } from '@/components/ui/badge'
+    10→    10→import { Skeleton } from '@/components/ui/skeleton'
+    11→    11→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    12→    12→import { Separator } from '@/components/ui/separator'
+    13→    13→import { Textarea } from '@/components/ui/textarea'
+    14→    14→import { Label } from '@/components/ui/label'
+    15→    15→import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+    16→    16→import { toast } from 'sonner'
+    17→    17→import {
+    18→    18→  ShoppingBag, Store, ShoppingCart, ClipboardList, User,
+    19→    19→  Search, Plus, Minus, Trash2, Star, MapPin, Phone,
+    20→    20→  Loader2, Package, ChevronLeft, ChevronRight, ArrowLeft,
+    21→    21→  MessageSquare, CheckCircle2, Eye
+    22→    22→} from 'lucide-react'
+    23→    23→
+    24→    24→// Types
+    25→    25→interface Product {
+    26→    26→  id: string
+    27→    27→  name: string
+    28→    28→  description?: string | null
+    29→    29→  price: number
+    30→    30→  originalPrice?: number | null
+    31→    31→  image?: string | null
+    32→    32→  unit: string
+    33→    33→  inStock: boolean
+    34→    34→  rating: number
+    35→    35→  soldCount: number
+    36→    36→  shopId: string
+    37→    37→  categoryId: string
+    38→    38→  shop: { id: string; name: string; image?: string | null; rating: number }
+    39→    39→  category: { id: string; name: string; slug: string }
+    40→    40→}
+    41→    41→
+    42→    42→interface ProductDetail extends Product {
+    43→    43→  reviews: Review[]
+    44→    44→  shop: { id: string; name: string; image?: string | null; rating: number; address?: string | null; phone?: string | null }
+    45→    45→}
+    46→    46→
+    47→    47→interface Review {
+    48→    48→  id: string
+    49→    49→  rating: number
+    50→    50→  comment?: string | null
+    51→    51→  createdAt: string
+    52→    52→  user: { id: string; name: string; avatar?: string | null }
+    53→    53→}
+    54→    54→
+    55→    55→interface Category {
+    56→    56→  id: string
+    57→    57→  name: string
+    58→    58→  icon?: string | null
+    59→    59→  slug: string
+    60→    60→  _count: { products: number }
+    61→    61→}
+    62→    62→
+    63→    63→interface Shop {
+    64→    64→  id: string
+    65→    65→  name: string
+    66→    66→  description?: string | null
+    67→    67→  image?: string | null
+    68→    68→  address: string
+    69→    69→  phone?: string | null
+    70→    70→  rating: number
+    71→    71→  isActive: boolean
+    72→    72→  owner: { id: string; name: string }
+    73→    73→  _count: { products: number }
+    74→    74→}
+    75→    75→
+    76→    76→interface OrderItem {
+    77→    77→  id: string
+    78→    78→  quantity: number
+    79→    79→  price: number
+    80→    80→  productId: string
+    81→    81→  product: { id: string; name: string; image?: string | null; unit: string }
+    82→    82→}
+    83→    83→
+    84→    84→interface Order {
+    85→    85→  id: string
+    86→    86→  status: string
+    87→    87→  total: number
+    88→    88→  shippingFee: number
+    89→    89→  address: string
+    90→    90→  phone: string
+    91→    91→  note?: string | null
+    92→    92→  paymentMethod: string
+    93→    93→  paymentStatus: string
+    94→    94→  buyerId: string
+    95→    95→  shopId: string
+    96→    96→  shipperId?: string | null
+    97→    97→  createdAt: string
+    98→    98→  updatedAt: string
+    99→    99→  shop: { id: string; name: string; image?: string | null; address?: string | null }
+   100→   100→  shipper?: { id: string; name: string; phone: string } | null
+   101→   101→  items: OrderItem[]
+   102→   102→}
+   103→   103→
+   104→   104→// Star rating display helper
+   105→   105→function StarRating({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'md' | 'lg' }) {
+   106→   106→  const sizeClass = size === 'sm' ? 'h-3 w-3' : size === 'md' ? 'h-4 w-4' : 'h-5 w-5'
+   107→   107→  return (
+   108→   108→    <div className="flex items-center gap-0.5">
+   109→   109→      {Array.from({ length: 5 }).map((_, i) => (
+   110→   110→        <Star
+   111→   111→          key={i}
+   112→   112→          className={`${sizeClass} ${i < Math.round(rating) ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200 fill-gray-200'}`}
+   113→   113→        />
+   114→   114→      ))}
+   115→   115→    </div>
+   116→   116→  )
+   117→   117→}
+   118→   118→
+   119→   119→// Interactive star picker for reviews
+   120→   120→function StarPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+   121→   121→  const [hovered, setHovered] = useState(0)
+   122→   122→  return (
+   123→   123→    <div className="flex gap-1">
+   124→   124→      {Array.from({ length: 5 }).map((_, i) => (
+   125→   125→        <button
+   126→   126→          key={i}
+   127→   127→          type="button"
+   128→   128→          className="transition-transform hover:scale-110"
+   129→   129→          onMouseEnter={() => setHovered(i + 1)}
+   130→   130→          onMouseLeave={() => setHovered(0)}
+   131→   131→          onClick={() => onChange(i + 1)}
+   132→   132→        >
+   133→   133→          <Star className={`h-7 w-7 ${(hovered || value) > i ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
+   134→   134→        </button>
+   135→   135→      ))}
+   136→   136→    </div>
+   137→   137→  )
+   138→   138→}
+   139→   139→
+   140→   140→// Discount badge helper
+   141→   141→function DiscountBadge({ originalPrice, price }: { originalPrice: number; price: number }) {
+   142→   142→  if (!originalPrice || originalPrice <= price) return null
+   143→   143→  const discount = Math.round(((originalPrice - price) / originalPrice) * 100)
+   144→   144→  return (
+   145→   145→    <Badge className="bg-red-500 text-white text-xs font-bold shadow-sm">
+   146→   146→      -{discount}%
+   147→   147→    </Badge>
+   148→   148→  )
+   149→   149→}
+   150→   150→
+   151→   151→const buyerTabs = [
+   152→   152→  { id: 'products', label: 'Sản phẩm', icon: ShoppingBag },
+   153→   153→  { id: 'shops', label: 'Sạp hàng', icon: Store },
+   154→   154→  { id: 'cart', label: 'Giỏ hàng', icon: ShoppingCart },
+   155→   155→  { id: 'orders', label: 'Đơn hàng', icon: ClipboardList },
+   156→   156→  { id: 'profile', label: 'Hồ sơ', icon: User },
+   157→   157→]
+   158→   158→
+   159→   159→export default function BuyerDashboard() {
+   160→   160→  const { user, currentTab, setTab, cart, fetchCart, addToCart, updateCartItem, removeCartItem } = useAppStore()
+   161→   161→  const activeTab = currentTab || 'products'
+   162→   162→
+   163→   163→  const handleTabChange = (tab: string) => {
+   164→   164→    setTab(tab)
+   165→   165→  }
+   166→   166→
+   167→   167→  return (
+   168→   168→    <div className="min-h-screen flex flex-col bg-muted/30">
+   169→   169→      {/* Header - sticky with backdrop blur */}
+   170→   170→      <header className="bg-white/80 backdrop-blur-md border-b sticky top-0 z-50">
+   171→   171→        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+   172→   172→          <div className="flex items-center gap-3">
+   173→   173→            <h1 className="text-xl font-black text-green-700">Z-MARKET</h1>
+   174→   174→            <Badge variant="secondary" className="bg-green-100 text-green-700">Người mua</Badge>
+   175→   175→          </div>
+   176→   176→          <div className="flex items-center gap-3">
+   177→   177→            <span className="text-sm text-muted-foreground hidden sm:block">{user?.name}</span>
+   178→   178→            <Button variant="ghost" size="sm" onClick={() => useAppStore.getState().logout()}>
+   179→   179→              Đăng xuất
+   180→   180→            </Button>
+   181→   181→          </div>
+   182→   182→        </div>
+   183→   183→      </header>
+   184→   184→
+   185→   185→      <div className="flex-1 flex">
+   186→   186→        {/* Sidebar */}
+   187→   187→        <aside className="hidden md:flex w-56 bg-white border-r flex-col">
+   188→   188→          <nav className="p-3 space-y-1">
+   189→   189→            {buyerTabs.map((tab) => (
+   190→   190→              <button
+   191→   191→                key={tab.id}
+   192→   192→                onClick={() => handleTabChange(tab.id)}
+   193→   193→                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+   194→   194→                  activeTab === tab.id
+   195→   195→                    ? 'bg-green-50 text-green-700'
+   196→   196→                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+   197→   197→                }`}
+   198→   198→              >
+   199→   199→                <tab.icon className="h-4 w-4" />
+   200→   200→                {tab.label}
+   201→   201→                {tab.id === 'cart' && cart.length > 0 && (
+   202→   202→                  <Badge className="ml-auto bg-green-600 text-white text-xs h-5 min-w-5">{cart.length}</Badge>
+   203→   203→                )}
+   204→   204→              </button>
+   205→   205→            ))}
+   206→   206→          </nav>
+   207→   207→        </aside>
+   208→   208→
+   209→   209→        {/* Mobile Tab Bar - polished with active indicator */}
+   210→   210→        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t z-50 safe-area-pb">
+   211→   211→          <div className="flex justify-around">
+   212→   212→            {buyerTabs.map((tab) => (
+   213→   213→              <button
+   214→   214→                key={tab.id}
+   215→   215→                onClick={() => handleTabChange(tab.id)}
+   216→   216→                className={`flex flex-col items-center py-2 px-3 text-xs relative transition-colors ${
+   217→   217→                  activeTab === tab.id ? 'text-green-700' : 'text-muted-foreground'
+   218→   218→                }`}
+   219→   219→              >
+   220→   220→                {activeTab === tab.id && (
+   221→   221→                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-green-600 rounded-full" />
+   222→   222→                )}
+   223→   223→                <div className="relative">
+   224→   224→                  <tab.icon className={`h-5 w-5 transition-transform ${activeTab === tab.id ? 'scale-110' : ''}`} />
+   225→   225→                  {tab.id === 'cart' && cart.length > 0 && (
+   226→   226→                    <span className="absolute -top-1 -right-2 bg-green-600 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center">
+   227→   227→                      {cart.length}
+   228→   228→                    </span>
+   229→   229→                  )}
+   230→   230→                </div>
+   231→   231→                {tab.label}
+   232→   232→              </button>
+   233→   233→            ))}
+   234→   234→          </div>
+   235→   235→        </div>
+   236→   236→
+   237→   237→        {/* Main Content */}
+   238→   238→        <main className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
+   239→   239→          <div className="animate-fadeIn">
+   240→   240→            {activeTab === 'products' && <ProductsTab />}
+   241→   241→            {activeTab === 'shops' && <ShopsTab />}
+   242→   242→            {activeTab === 'cart' && <CartTab />}
+   243→   243→            {activeTab === 'orders' && <OrdersTab />}
+   244→   244→            {activeTab === 'profile' && <ProfileTab />}
+   245→   245→          </div>
+   246→   246→        </main>
+   247→   247→      </div>
+   248→   248→
+   249→   249→      {/* Footer */}
+   250→   250→      <footer className="bg-gray-900 text-gray-400 mt-auto">
+   251→   251→        <div className="max-w-6xl mx-auto px-4 py-4 text-center text-sm">
+   252→   252→          © 2024 Z-Market — Chợ Số Việt Nam
+   253→   253→        </div>
+   254→   254→      </footer>
+   255→   255→
+   256→   256→      <style jsx>{`
+   257→   257→        @keyframes fadeIn {
+   258→   258→          from { opacity: 0; transform: translateY(6px); }
+   259→   259→          to { opacity: 1; transform: translateY(0); }
+   260→   260→        }
+   261→   261→        .animate-fadeIn {
+   262→   262→          animation: fadeIn 0.3s ease-out;
+   263→   263→        }
+   264→   264→      `}</style>
+   265→   265→    </div>
+   266→   266→  )
+   267→   267→}
+   268→   268→
+   269→   269→// ==================== PRODUCTS TAB ====================
+   270→   270→function ProductsTab() {
+   271→   271→  const { addToCart } = useAppStore()
+   272→   272→  const [products, setProducts] = useState<Product[]>([])
+   273→   273→  const [categories, setCategories] = useState<Category[]>([])
+   274→   274→  const [loading, setLoading] = useState(true)
+   275→   275→  const [search, setSearch] = useState('')
+   276→   276→  const [selectedCategory, setSelectedCategory] = useState('all')
+   277→   277→  const [page, setPage] = useState(1)
+   278→   278→  const [totalPages, setTotalPages] = useState(1)
+   279→   279→  const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
+   280→   280→  const [imageLoadingMap, setImageLoadingMap] = useState<Record<string, boolean>>({})
+   281→   281→
+   282→   282→  useEffect(() => {
+   283→   283→    let cancelled = false
+   284→   284→    const fetchData = async () => {
+   285→   285→      setLoading(true)
+   286→   286→      try {
+   287→   287→        const params = new URLSearchParams()
+   288→   288→        params.set('page', page.toString())
+   289→   289→        params.set('limit', '12')
+   290→   290→        if (search) params.set('search', search)
+   291→   291→        if (selectedCategory && selectedCategory !== 'all') params.set('categoryId', selectedCategory)
+   292→   292→
+   293→   293→        const res = await fetch(`/api/products?${params}`)
+   294→   294→        if (res.ok && !cancelled) {
+   295→   295→          const data = await res.json()
+   296→   296→          setProducts(data.products)
+   297→   297→          setTotalPages(data.pagination.totalPages)
+   298→   298→        }
+   299→   299→      } catch { /* ignore */ }
+   300→   300→      if (!cancelled) setLoading(false)
+   301→   301→    }
+   302→   302→    fetchData()
+   303→   303→    return () => { cancelled = true }
+   304→   304→  }, [page, search, selectedCategory])
+   305→   305→
+   306→   306→  useEffect(() => {
+   307→   307→    let cancelled = false
+   308→   308→    const fetchCategories = async () => {
+   309→   309→      try {
+   310→   310→        const res = await fetch('/api/categories')
+   311→   311→        if (res.ok && !cancelled) {
+   312→   312→          const data = await res.json()
+   313→   313→          setCategories(data.categories)
+   314→   314→        }
+   315→   315→      } catch { /* ignore */ }
+   316→   316→    }
+   317→   317→    fetchCategories()
+   318→   318→    return () => { cancelled = true }
+   319→   319→  }, [])
+   320→   320→
+   321→   321→  const handleAddToCart = async (productId: string, e?: React.MouseEvent) => {
+   322→   322→    if (e) e.stopPropagation()
+   323→   323→    try {
+   324→   324→      await addToCart(productId)
+   325→   325→      toast.success('Đã thêm vào giỏ hàng 🛒')
+   326→   326→    } catch (error) {
+   327→   327→      toast.error(error instanceof Error ? error.message : 'Không thể thêm vào giỏ hàng')
+   328→   328→    }
+   329→   329→  }
+   330→   330→
+   331→   331→  const handleImageLoad = (productId: string) => {
+   332→   332→    setImageLoadingMap(prev => ({ ...prev, [productId]: false }))
+   333→   333→  }
+   334→   334→
+   335→   335→  const handleImageStart = (productId: string) => {
+   336→   336→    setImageLoadingMap(prev => ({ ...prev, [productId]: true }))
+   337→   337→  }
+   338→   338→
+   339→   339→  return (
+   340→   340→    <div>
+   341→   341→      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+   342→   342→        <div className="relative flex-1">
+   343→   343→          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   344→   344→          <Input
+   345→   345→            placeholder="Tìm kiếm sản phẩm..."
+   346→   346→            className="pl-9"
+   347→   347→            value={search}
+   348→   348→            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+   349→   349→          />
+   350→   350→        </div>
+   351→   351→        <Select value={selectedCategory} onValueChange={(v) => { setSelectedCategory(v); setPage(1) }}>
+   352→   352→          <SelectTrigger className="w-full sm:w-48">
+   353→   353→            <SelectValue placeholder="Danh mục" />
+   354→   354→          </SelectTrigger>
+   355→   355→          <SelectContent>
+   356→   356→            <SelectItem value="all">Tất cả danh mục</SelectItem>
+   357→   357→            {categories.map((cat) => (
+   358→   358→              <SelectItem key={cat.id} value={cat.id}>
+   359→   359→                {cat.name} ({cat._count.products})
+   360→   360→              </SelectItem>
+   361→   361→            ))}
+   362→   362→          </SelectContent>
+   363→   363→        </Select>
+   364→   364→      </div>
+   365→   365→
+   366→   366→      {loading ? (
+   367→   367→        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+   368→   368→          {Array.from({ length: 8 }).map((_, i) => (
+   369→   369→            <Card key={i} className="overflow-hidden">
+   370→   370→              <Skeleton className="h-40 w-full" />
+   371→   371→              <CardContent className="p-3">
+   372→   372→                <Skeleton className="h-4 w-3/4 mb-2" />
+   373→   373→                <Skeleton className="h-4 w-1/2 mb-2" />
+   374→   374→                <Skeleton className="h-4 w-1/3" />
+   375→   375→              </CardContent>
+   376→   376→            </Card>
+   377→   377→          ))}
+   378→   378→        </div>
+   379→   379→      ) : products.length === 0 ? (
+   380→   380→        <div className="text-center py-16">
+   381→   381→          <div className="text-5xl mb-4">🔍</div>
+   382→   382→          <h3 className="text-lg font-semibold mb-1">Không tìm thấy sản phẩm</h3>
+   383→   383→          <p className="text-muted-foreground">Thử thay đổi từ khóa hoặc danh mục</p>
+   384→   384→        </div>
+   385→   385→      ) : (
+   386→   386→        <>
+   387→   387→          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+   388→   388→            {products.map((product) => (
+   389→   389→              <Card
+   390→   390→                key={product.id}
+   391→   391→                className="overflow-hidden group hover:shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer"
+   392→   392→                onClick={() => setSelectedProductId(product.id)}
+   393→   393→              >
+   394→   394→                <div className="h-40 bg-muted flex items-center justify-center relative overflow-hidden">
+   395→   395→                  {/* Skeleton placeholder while image loads */}
+   396→   396→                  {imageLoadingMap[product.id] !== false && product.image && (
+   397→   397→                    <Skeleton className="absolute inset-0" />
+   398→   398→                  )}
+   399→   399→                  {product.image ? (
+   400→   400→                    <img
+   401→   401→                      src={product.image}
+   402→   402→                      alt={product.name}
+   403→   403→                      className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${imageLoadingMap[product.id] === false ? 'opacity-100' : 'opacity-0'}`}
+   404→   404→                      onLoad={() => handleImageLoad(product.id)}
+   405→   405→                      onError={() => handleImageLoad(product.id)}
+   406→   406→                    />
+   407→   407→                  ) : (
+   408→   408→                    <Package className="h-10 w-10 text-muted-foreground" />
+   409→   409→                  )}
+   410→   410→                  {/* Discount badge */}
+   411→   411→                  {product.originalPrice && product.originalPrice > product.price && (
+   412→   412→                    <DiscountBadge originalPrice={product.originalPrice} price={product.price} />
+   413→   413→                  )}
+   414→   414→                  {/* Out of stock overlay */}
+   415→   415→                  {!product.inStock && (
+   416→   416→                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+   417→   417→                      <span className="text-white font-semibold text-sm">Hết hàng</span>
+   418→   418→                    </div>
+   419→   419→                  )}
+   420→   420→                </div>
+   421→   421→                <CardContent className="p-3">
+   422→   422→                  <h3 className="font-medium text-sm line-clamp-2 mb-1 min-h-[2.5rem]">{product.name}</h3>
+   423→   423→                  {/* Shop name with icon */}
+   424→   424→                  <p className="text-xs text-muted-foreground flex items-center gap-1 mb-2">
+   425→   425→                    <Store className="h-3 w-3" />
+   426→   426→                    {product.shop.name}
+   427→   427→                  </p>
+   428→   428→                  <div className="flex items-baseline gap-2 mb-2">
+   429→   429→                    <span className="text-green-700 font-bold">{formatPrice(product.price)}</span>
+   430→   430→                    {product.originalPrice && product.originalPrice > product.price && (
+   431→   431→                      <span className="text-xs text-muted-foreground line-through">{formatPrice(product.originalPrice)}</span>
+   432→   432→                    )}
+   433→   433→                  </div>
+   434→   434→                  <div className="flex items-center justify-between">
+   435→   435→                    <div className="flex items-center gap-1">
+   436→   436→                      <StarRating rating={product.rating} />
+   437→   437→                      <span className="text-xs text-muted-foreground ml-0.5">{product.rating.toFixed(1)}</span>
+   438→   438→                    </div>
+   439→   439→                    <span className="text-xs text-muted-foreground">Đã bán {product.soldCount}</span>
+   440→   440→                  </div>
+   441→   441→                  {/* Green add to cart button */}
+   442→   442→                  <Button
+   443→   443→                    size="sm"
+   444→   444→                    className="w-full mt-2 h-8 text-xs bg-green-600 hover:bg-green-700 text-white"
+   445→   445→                    onClick={(e) => handleAddToCart(product.id, e)}
+   446→   446→                    disabled={!product.inStock}
+   447→   447→                  >
+   448→   448→                    <Plus className="h-3 w-3 mr-1" />
+   449→   449→                    Thêm vào giỏ
+   450→   450→                  </Button>
+   451→   451→                  {/* View detail link */}
+   452→   452→                  <button
+   453→   453→                    className="w-full mt-1.5 text-xs text-green-600 hover:text-green-800 flex items-center justify-center gap-1 transition-colors"
+   454→   454→                    onClick={(e) => { e.stopPropagation(); setSelectedProductId(product.id) }}
+   455→   455→                  >
+   456→   456→                    <Eye className="h-3 w-3" />
+   457→   457→                    Xem chi tiết
+   458→   458→                  </button>
+   459→   459→                </CardContent>
+   460→   460→              </Card>
+   461→   461→            ))}
+   462→   462→          </div>
+   463→   463→
+   464→   464→          {/* Pagination */}
+   465→   465→          {totalPages > 1 && (
+   466→   466→            <div className="flex items-center justify-center gap-2 mt-6">
+   467→   467→              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+   468→   468→                <ChevronLeft className="h-4 w-4" />
+   469→   469→              </Button>
+   470→   470→              <span className="text-sm text-muted-foreground">
+   471→   471→                Trang {page} / {totalPages}
+   472→   472→              </span>
+   473→   473→              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+   474→   474→                <ChevronRight className="h-4 w-4" />
+   475→   475→              </Button>
+   476→   476→            </div>
+   477→   477→          )}
+   478→   478→        </>
+   479→   479→      )}
+   480→   480→
+   481→   481→      {/* Product Detail Dialog */}
+   482→   482→      {selectedProductId && (
+   483→   483→        <ProductDetailDialog
+   484→   484→          productId={selectedProductId}
+   485→   485→          open={!!selectedProductId}
+   486→   486→          onClose={() => setSelectedProductId(null)}
+   487→   487→          onAddToCart={handleAddToCart}
+   488→   488→        />
+   489→   489→      )}
+   490→   490→    </div>
+   491→   491→  )
+   492→   492→}
+   493→   493→
+   494→   494→// ==================== PRODUCT DETAIL DIALOG ====================
+   495→   495→function ProductDetailDialog({
+   496→   496→  productId,
+   497→   497→  open,
+   498→   498→  onClose,
+   499→   499→  onAddToCart,
+   500→   500→}: {
+   501→   501→  productId: string
+   502→   502→  open: boolean
+   503→   503→  onClose: () => void
+   504→   504→  onAddToCart: (id: string, e?: React.MouseEvent) => void
+   505→   505→}) {
+   506→   506→  const [product, setProduct] = useState<ProductDetail | null>(null)
+   507→   507→  const [loading, setLoading] = useState(true)
+   508→   508→  const [quantity, setQuantity] = useState(1)
+   509→   509→
+   510→   510→  useEffect(() => {
+   511→   511→    if (!open) return
+   512→   512→    let cancelled = false
+   513→   513→    const fetchProduct = async () => {
+   514→   514→      setLoading(true)
+   515→   515→      try {
+   516→   516→        const res = await fetch(`/api/products/${productId}`)
+   517→   517→        if (res.ok && !cancelled) {
+   518→   518→          const data = await res.json()
+   519→   519→          setProduct(data.product)
+   520→   520→        }
+   521→   521→      } catch { /* ignore */ }
+   522→   522→      if (!cancelled) setLoading(false)
+   523→   523→    }
+   524→   524→    fetchProduct()
+   525→   525→    return () => { cancelled = true }
+   526→   526→  }, [productId, open])
+   527→   527→
+   528→   528→  // Reset quantity when dialog closes via onClose callback
+   529→   529→  const handleClose = () => {
+   530→   530→    setQuantity(1)
+   531→   531→    onClose()
+   532→   532→  }
+   533→   533→
+   534→   534→  const handleAdd = (e?: React.MouseEvent) => {
+   535→   535→    if (e) e.stopPropagation()
+   536→   536→    if (product) {
+   537→   537→      for (let i = 0; i < quantity; i++) {
+   538→   538→        onAddToCart(product.id, e)
+   539→   539→      }
+   540→   540→    }
+   541→   541→  }
+   542→   542→
+   543→   543→  return (
+   544→   544→    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose() }}>
+   545→   545→      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   546→   546→        {loading ? (
+   547→   547→          <div className="space-y-4 p-4">
+   548→   548→            <Skeleton className="h-64 w-full" />
+   549→   549→            <Skeleton className="h-6 w-3/4" />
+   550→   550→            <Skeleton className="h-4 w-1/2" />
+   551→   551→            <Skeleton className="h-4 w-1/3" />
+   552→   552→          </div>
+   553→   553→        ) : product ? (
+   554→   554→          <div>
+   555→   555→            <DialogHeader>
+   556→   556→              <DialogTitle className="sr-only">Chi tiết sản phẩm</DialogTitle>
+   557→   557→            </DialogHeader>
+   558→   558→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+   559→   559→              {/* Product Image */}
+   560→   560→              <div className="rounded-xl overflow-hidden bg-muted aspect-square">
+   561→   561→                {product.image ? (
+   562→   562→                  <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+   563→   563→                ) : (
+   564→   564→                  <div className="w-full h-full flex items-center justify-center">
+   565→   565→                    <Package className="h-16 w-16 text-muted-foreground" />
+   566→   566→                  </div>
+   567→   567→                )}
+   568→   568→              </div>
+   569→   569→
+   570→   570→              {/* Product Info */}
+   571→   571→              <div className="flex flex-col">
+   572→   572→                <h2 className="text-xl font-bold mb-2">{product.name}</h2>
+   573→   573→
+   574→   574→                {/* Rating & Sold */}
+   575→   575→                <div className="flex items-center gap-3 mb-3">
+   576→   576→                  <div className="flex items-center gap-1">
+   577→   577→                    <StarRating rating={product.rating} size="md" />
+   578→   578→                    <span className="text-sm font-medium">{product.rating.toFixed(1)}</span>
+   579→   579→                  </div>
+   580→   580→                  <Separator orientation="vertical" className="h-4" />
+   581→   581→                  <span className="text-sm text-muted-foreground">Đã bán {product.soldCount}</span>
+   582→   582→                </div>
+   583→   583→
+   584→   584→                {/* Price */}
+   585→   585→                <div className="bg-green-50 rounded-lg p-3 mb-4">
+   586→   586→                  <div className="flex items-baseline gap-2">
+   587→   587→                    <span className="text-2xl font-bold text-green-700">{formatPrice(product.price)}</span>
+   588→   588→                    {product.originalPrice && product.originalPrice > product.price && (
+   589→   589→                      <>
+   590→   590→                        <span className="text-sm text-muted-foreground line-through">{formatPrice(product.originalPrice)}</span>
+   591→   591→                        <DiscountBadge originalPrice={product.originalPrice} price={product.price} />
+   592→   592→                      </>
+   593→   593→                    )}
+   594→   594→                  </div>
+   595→   595→                  <p className="text-xs text-muted-foreground mt-1">Đơn vị: {product.unit}</p>
+   596→   596→                </div>
+   597→   597→
+   598→   598→                {/* Shop info */}
+   599→   599→                <div
+   600→   600→                  className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 mb-4 cursor-pointer hover:bg-muted transition-colors"
+   601→   601→                >
+   602→   602→                  <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
+   603→   603→                    {product.shop.image ? (
+   604→   604→                      <img src={product.shop.image} alt={product.shop.name} className="w-full h-full rounded-lg object-cover" />
+   605→   605→                    ) : (
+   606→   606→                      <Store className="h-5 w-5 text-green-600" />
+   607→   607→                    )}
+   608→   608→                  </div>
+   609→   609→                  <div className="flex-1 min-w-0">
+   610→   610→                    <p className="font-medium text-sm truncate">{product.shop.name}</p>
+   611→   611→                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+   612→   612→                      <StarRating rating={product.shop.rating} />
+   613→   613→                      <span>{product.shop.rating.toFixed(1)}</span>
+   614→   614→                    </div>
+   615→   615→                  </div>
+   616→   616→                </div>
+   617→   617→
+   618→   618→                {/* Description */}
+   619→   619→                {product.description && (
+   620→   620→                  <div className="mb-4">
+   621→   621→                    <p className="text-sm text-muted-foreground">{product.description}</p>
+   622→   622→                  </div>
+   623→   623→                )}
+   624→   624→
+   625→   625→                {/* Quantity Picker */}
+   626→   626→                <div className="flex items-center gap-3 mb-4">
+   627→   627→                  <span className="text-sm font-medium">Số lượng:</span>
+   628→   628→                  <div className="flex items-center gap-2">
+   629→   629→                    <Button
+   630→   630→                      variant="outline"
+   631→   631→                      size="sm"
+   632→   632→                      className="h-8 w-8 p-0"
+   633→   633→                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
+   634→   634→                    >
+   635→   635→                      <Minus className="h-3 w-3" />
+   636→   636→                    </Button>
+   637→   637→                    <span className="w-10 text-center font-medium">{quantity}</span>
+   638→   638→                    <Button
+   639→   639→                      variant="outline"
+   640→   640→                      size="sm"
+   641→   641→                      className="h-8 w-8 p-0"
+   642→   642→                      onClick={() => setQuantity(quantity + 1)}
+   643→   643→                    >
+   644→   644→                      <Plus className="h-3 w-3" />
+   645→   645→                    </Button>
+   646→   646→                  </div>
+   647→   647→                </div>
+   648→   648→
+   649→   649→                {/* Add to cart button */}
+   650→   650→                <Button
+   651→   651→                  className="w-full bg-green-600 hover:bg-green-700 text-white h-11 text-base font-semibold"
+   652→   652→                  onClick={handleAdd}
+   653→   653→                  disabled={!product.inStock}
+   654→   654→                >
+   655→   655→                  <ShoppingCart className="h-5 w-5 mr-2" />
+   656→   656→                  {product.inStock ? 'Thêm vào giỏ' : 'Hết hàng'}
+   657→   657→                </Button>
+   658→   658→              </div>
+   659→   659→            </div>
+   660→   660→
+   661→   661→            {/* Reviews Section */}
+   662→   662→            <div className="mt-6 border-t pt-6">
+   663→   663→              <h3 className="font-semibold mb-4 flex items-center gap-2">
+   664→   664→                <MessageSquare className="h-4 w-4" />
+   665→   665→                Đánh giá sản phẩm ({product.reviews?.length || 0})
+   666→   666→              </h3>
+   667→   667→              {(!product.reviews || product.reviews.length === 0) ? (
+   668→   668→                <p className="text-sm text-muted-foreground text-center py-6">Chưa có đánh giá nào</p>
+   669→   669→              ) : (
+   670→   670→                <div className="space-y-4 max-h-64 overflow-y-auto custom-scrollbar">
+   671→   671→                  {product.reviews.map((review) => (
+   672→   672→                    <div key={review.id} className="flex gap-3 p-3 rounded-lg bg-muted/30">
+   673→   673→                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0 text-sm font-medium text-green-700">
+   674→   674→                        {review.user.name.charAt(0).toUpperCase()}
+   675→   675→                      </div>
+   676→   676→                      <div className="flex-1">
+   677→   677→                        <div className="flex items-center gap-2 mb-1">
+   678→   678→                          <span className="text-sm font-medium">{review.user.name}</span>
+   679→   679→                          <StarRating rating={review.rating} />
+   680→   680→                        </div>
+   681→   681→                        {review.comment && <p className="text-sm text-muted-foreground">{review.comment}</p>}
+   682→   682→                        <p className="text-xs text-muted-foreground mt-1">{formatDateTime(review.createdAt)}</p>
+   683→   683→                      </div>
+   684→   684→                    </div>
+   685→   685→                  ))}
+   686→   686→                </div>
+   687→   687→              )}
+   688→   688→            </div>
+   689→   689→          </div>
+   690→   690→        ) : (
+   691→   691→          <div className="text-center py-8">
+   692→   692→            <p className="text-muted-foreground">Không tìm thấy sản phẩm</p>
+   693→   693→          </div>
+   694→   694→        )}
+   695→   695→      </DialogContent>
+   696→   696→    </Dialog>
+   697→   697→  )
+   698→   698→}
+   699→   699→
+   700→   700→// ==================== SHOPS TAB ====================
+   701→   701→function ShopsTab() {
+   702→   702→  const [shops, setShops] = useState<Shop[]>([])
+   703→   703→  const [loading, setLoading] = useState(true)
+   704→   704→  const [search, setSearch] = useState('')
+   705→   705→  const [selectedShopId, setSelectedShopId] = useState<string | null>(null)
+   706→   706→
+   707→   707→  useEffect(() => {
+   708→   708→    let cancelled = false
+   709→   709→    const fetchShops = async () => {
+   710→   710→      setLoading(true)
+   711→   711→      try {
+   712→   712→        const params = new URLSearchParams()
+   713→   713→        if (search) params.set('search', search)
+   714→   714→        const res = await fetch(`/api/shops?${params}`)
+   715→   715→        if (res.ok && !cancelled) {
+   716→   716→          const data = await res.json()
+   717→   717→          setShops(data.shops)
+   718→   718→        }
+   719→   719→      } catch { /* ignore */ }
+   720→   720→      if (!cancelled) setLoading(false)
+   721→   721→    }
+   722→   722→    fetchShops()
+   723→   723→    return () => { cancelled = true }
+   724→   724→  }, [search])
+   725→   725→
+   726→   726→  // If a shop is selected, show shop detail
+   727→   727→  if (selectedShopId) {
+   728→   728→    return <ShopDetailView shopId={selectedShopId} onBack={() => setSelectedShopId(null)} />
+   729→   729→  }
+   730→   730→
+   731→   731→  return (
+   732→   732→    <div>
+   733→   733→      <div className="relative mb-6">
+   734→   734→        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   735→   735→        <Input
+   736→   736→          placeholder="Tìm kiếm sạp hàng..."
+   737→   737→          className="pl-9"
+   738→   738→          value={search}
+   739→   739→          onChange={(e) => setSearch(e.target.value)}
+   740→   740→        />
+   741→   741→      </div>
+   742→   742→
+   743→   743→      {loading ? (
+   744→   744→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   745→   745→          {Array.from({ length: 6 }).map((_, i) => (
+   746→   746→            <Card key={i}>
+   747→   747→              <CardContent className="p-4">
+   748→   748→                <Skeleton className="h-6 w-3/4 mb-2" />
+   749→   749→                <Skeleton className="h-4 w-1/2 mb-2" />
+   750→   750→                <Skeleton className="h-4 w-1/3" />
+   751→   751→              </CardContent>
+   752→   752→            </Card>
+   753→   753→          ))}
+   754→   754→        </div>
+   755→   755→      ) : shops.length === 0 ? (
+   756→   756→        <div className="text-center py-16">
+   757→   757→          <div className="text-5xl mb-4">🏪</div>
+   758→   758→          <h3 className="text-lg font-semibold mb-1">Không tìm thấy sạp hàng</h3>
+   759→   759→          <p className="text-muted-foreground">Thử thay đổi từ khóa tìm kiếm</p>
+   760→   760→        </div>
+   761→   761→      ) : (
+   762→   762→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   763→   763→          {shops.map((shop) => (
+   764→   764→            <Card
+   765→   765→              key={shop.id}
+   766→   766→              className="hover:shadow-lg hover:scale-[1.01] transition-all duration-200 cursor-pointer"
+   767→   767→              onClick={() => setSelectedShopId(shop.id)}
+   768→   768→            >
+   769→   769→              <CardContent className="p-4">
+   770→   770→                <div className="flex items-start gap-3">
+   771→   771→                  <div className="w-14 h-14 rounded-xl bg-green-100 flex items-center justify-center shrink-0 overflow-hidden">
+   772→   772→                    {shop.image ? (
+   773→   773→                      <img src={shop.image} alt={shop.name} className="w-full h-full rounded-xl object-cover" />
+   774→   774→                    ) : (
+   775→   775→                      <Store className="h-7 w-7 text-green-600" />
+   776→   776→                    )}
+   777→   777→                  </div>
+   778→   778→                  <div className="flex-1 min-w-0">
+   779→   779→                    <h3 className="font-semibold truncate">{shop.name}</h3>
+   780→   780→                    <div className="flex items-center gap-1 text-sm text-muted-foreground mt-0.5">
+   781→   781→                      <MapPin className="h-3 w-3" />
+   782→   782→                      <span className="truncate">{shop.address}</span>
+   783→   783→                    </div>
+   784→   784→                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+   785→   785→                      <span className="flex items-center gap-1">
+   786→   786→                        <StarRating rating={shop.rating} />
+   787→   787→                        <span>{shop.rating.toFixed(1)}</span>
+   788→   788→                      </span>
+   789→   789→                      <span>{shop._count.products} sản phẩm</span>
+   790→   790→                    </div>
+   791→   791→                    {shop.description && (
+   792→   792→                      <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{shop.description}</p>
+   793→   793→                    )}
+   794→   794→                  </div>
+   795→   795→                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+   796→   796→                </div>
+   797→   797→              </CardContent>
+   798→   798→            </Card>
+   799→   799→          ))}
+   800→   800→        </div>
+   801→   801→      )}
+   802→   802→    </div>
+   803→   803→  )
+   804→   804→}
+   805→   805→
+   806→   806→// ==================== SHOP DETAIL VIEW ====================
+   807→   807→function ShopDetailView({ shopId, onBack }: { shopId: string; onBack: () => void }) {
+   808→   808→  const [shop, setShop] = useState<Shop | null>(null)
+   809→   809→  const [products, setProducts] = useState<Product[]>([])
+   810→   810→  const [loading, setLoading] = useState(true)
+   811→   811→  const { addToCart } = useAppStore()
+   812→   812→
+   813→   813→  useEffect(() => {
+   814→   814→    let cancelled = false
+   815→   815→    const fetchData = async () => {
+   816→   816→      setLoading(true)
+   817→   817→      try {
+   818→   818→        const [shopRes, prodRes] = await Promise.all([
+   819→   819→          fetch(`/api/shops/${shopId}`),
+   820→   820→          fetch(`/api/products?shopId=${shopId}&limit=50`),
+   821→   821→        ])
+   822→   822→        if (shopRes.ok && !cancelled) {
+   823→   823→          const shopData = await shopRes.json()
+   824→   824→          setShop(shopData.shop)
+   825→   825→        }
+   826→   826→        if (prodRes.ok && !cancelled) {
+   827→   827→          const prodData = await prodRes.json()
+   828→   828→          setProducts(prodData.products)
+   829→   829→        }
+   830→   830→      } catch { /* ignore */ }
+   831→   831→      if (!cancelled) setLoading(false)
+   832→   832→    }
+   833→   833→    fetchData()
+   834→   834→    return () => { cancelled = true }
+   835→   835→  }, [shopId])
+   836→   836→
+   837→   837→  const handleAddToCart = async (productId: string) => {
+   838→   838→    try {
+   839→   839→      await addToCart(productId)
+   840→   840→      toast.success('Đã thêm vào giỏ hàng 🛒')
+   841→   841→    } catch (error) {
+   842→   842→      toast.error(error instanceof Error ? error.message : 'Không thể thêm vào giỏ hàng')
+   843→   843→    }
+   844→   844→  }
+   845→   845→
+   846→   846→  if (loading) {
+   847→   847→    return (
+   848→   848→      <div className="space-y-4">
+   849→   849→        <Skeleton className="h-8 w-24" />
+   850→   850→        <Skeleton className="h-40 w-full" />
+   851→   851→        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+   852→   852→          {Array.from({ length: 6 }).map((_, i) => (
+   853→   853→            <Card key={i}><CardContent className="p-3"><Skeleton className="h-32 w-full mb-2" /><Skeleton className="h-4 w-3/4" /></CardContent></Card>
+   854→   854→          ))}
+   855→   855→        </div>
+   856→   856→      </div>
+   857→   857→    )
+   858→   858→  }
+   859→   859→
+   860→   860→  if (!shop) return null
+   861→   861→
+   862→   862→  return (
+   863→   863→    <div>
+   864→   864→      {/* Back button */}
+   865→   865→      <Button variant="ghost" size="sm" onClick={onBack} className="mb-4">
+   866→   866→        <ArrowLeft className="h-4 w-4 mr-1" />
+   867→   867→        Quay lại
+   868→   868→      </Button>
+   869→   869→
+   870→   870→      {/* Shop Banner & Info */}
+   871→   871→      <Card className="mb-6 overflow-hidden">
+   872→   872→        <div className="h-32 sm:h-40 bg-gradient-to-r from-green-600 to-emerald-700 relative">
+   873→   873→          {shop.image && (
+   874→   874→            <img src={shop.image} alt={shop.name} className="absolute inset-0 w-full h-full object-cover opacity-30" />
+   875→   875→          )}
+   876→   876→          <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+   877→   877→        </div>
+   878→   878→        <CardContent className="p-6 -mt-10 relative">
+   879→   879→          <div className="flex items-end gap-4">
+   880→   880→            <div className="w-16 h-16 rounded-xl bg-white shadow-md flex items-center justify-center border-2 border-white shrink-0 overflow-hidden">
+   881→   881→              {shop.image ? (
+   882→   882→                <img src={shop.image} alt={shop.name} className="w-full h-full object-cover" />
+   883→   883→              ) : (
+   884→   884→                <Store className="h-8 w-8 text-green-600" />
+   885→   885→              )}
+   886→   886→            </div>
+   887→   887→            <div className="flex-1 min-w-0 pb-1">
+   888→   888→              <h2 className="text-xl font-bold">{shop.name}</h2>
+   889→   889→              <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
+   890→   890→                <span className="flex items-center gap-1">
+   891→   891→                  <StarRating rating={shop.rating} />
+   892→   892→                  <span className="font-medium">{shop.rating.toFixed(1)}</span>
+   893→   893→                </span>
+   894→   894→                <span>{shop._count.products} sản phẩm</span>
+   895→   895→              </div>
+   896→   896→            </div>
+   897→   897→          </div>
+   898→   898→          {shop.description && (
+   899→   899→            <p className="text-sm text-muted-foreground mt-3">{shop.description}</p>
+   900→   900→          )}
+   901→   901→          <div className="flex flex-col sm:flex-row gap-2 mt-3 text-sm text-muted-foreground">
+   902→   902→            <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{shop.address}</span>
+   903→   903→            {shop.phone && <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{shop.phone}</span>}
+   904→   904→          </div>
+   905→   905→        </CardContent>
+   906→   906→      </Card>
+   907→   907→
+   908→   908→      {/* Products Grid */}
+   909→   909→      <h3 className="font-semibold mb-4">Sản phẩm của sạp hàng</h3>
+   910→   910→      {products.length === 0 ? (
+   911→   911→        <div className="text-center py-12">
+   912→   912→          <div className="text-4xl mb-3">📦</div>
+   913→   913→          <p className="text-muted-foreground">Sạp hàng chưa có sản phẩm</p>
+   914→   914→        </div>
+   915→   915→      ) : (
+   916→   916→        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+   917→   917→          {products.map((product) => (
+   918→   918→            <Card
+   919→   919→              key={product.id}
+   920→   920→              className="overflow-hidden group hover:shadow-md hover:scale-[1.02] transition-all duration-200"
+   921→   921→            >
+   922→   922→              <div className="h-36 bg-muted relative overflow-hidden">
+   923→   923→                {product.image ? (
+   924→   924→                  <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+   925→   925→                ) : (
+   926→   926→                  <div className="w-full h-full flex items-center justify-center"><Package className="h-8 w-8 text-muted-foreground" /></div>
+   927→   927→                )}
+   928→   928→                {product.originalPrice && product.originalPrice > product.price && (
+   929→   929→                  <DiscountBadge originalPrice={product.originalPrice} price={product.price} />
+   930→   930→                )}
+   931→   931→              </div>
+   932→   932→              <CardContent className="p-3">
+   933→   933→                <h4 className="font-medium text-sm line-clamp-2 mb-1">{product.name}</h4>
+   934→   934→                <div className="flex items-baseline gap-2 mb-1">
+   935→   935→                  <span className="text-green-700 font-bold text-sm">{formatPrice(product.price)}</span>
+   936→   936→                  {product.originalPrice && product.originalPrice > product.price && (
+   937→   937→                    <span className="text-xs text-muted-foreground line-through">{formatPrice(product.originalPrice)}</span>
+   938→   938→                  )}
+   939→   939→                </div>
+   940→   940→                <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+   941→   941→                  <StarRating rating={product.rating} />
+   942→   942→                  <span>{product.rating.toFixed(1)}</span>
+   943→   943→                  <span className="ml-1">| {product.soldCount} đã bán</span>
+   944→   944→                </div>
+   945→   945→                <Button
+   946→   946→                  size="sm"
+   947→   947→                  className="w-full h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
+   948→   948→                  onClick={() => handleAddToCart(product.id)}
+   949→   949→                  disabled={!product.inStock}
+   950→   950→                >
+   951→   951→                  <Plus className="h-3 w-3 mr-1" />
+   952→   952→                  Thêm vào giỏ
+   953→   953→                </Button>
+   954→   954→              </CardContent>
+   955→   955→            </Card>
+   956→   956→          ))}
+   957→   957→        </div>
+   958→   958→      )}
+   959→   959→    </div>
+   960→   960→  )
+   961→   961→}
+   962→   962→
+   963→   963→// ==================== CART TAB ====================
+   964→   964→function CartTab() {
+   965→   965→  const { cart, cartTotal, updateCartItem, removeCartItem, fetchCart } = useAppStore()
+   966→   966→  const [checkingOut, setCheckingOut] = useState(false)
+   967→   967→  const [address, setAddress] = useState('')
+   968→   968→  const [phone, setPhone] = useState('')
+   969→   969→  const [note, setNote] = useState('')
+   970→   970→
+   971→   971→  const handleCheckout = async () => {
+   972→   972→    if (!address.trim()) { toast.error('Vui lòng nhập địa chỉ giao hàng'); return }
+   973→   973→    if (!phone.trim()) { toast.error('Vui lòng nhập số điện thoại'); return }
+   974→   974→    setCheckingOut(true)
+   975→   975→    try {
+   976→   976→      const res = await fetch('/api/orders', {
+   977→   977→        method: 'POST',
+   978→   978→        headers: { 'Content-Type': 'application/json' },
+   979→   979→        body: JSON.stringify({ address, phone, note: note || undefined, paymentMethod: 'COD', shippingFee: 15000 }),
+   980→   980→      })
+   981→   981→      const data = await res.json()
+   982→   982→      if (!res.ok) throw new Error(data.error || 'Đặt hàng thất bại')
+   983→   983→      toast.success('Đặt hàng thành công! 🎉')
+   984→   984→      await fetchCart()
+   985→   985→      setAddress('')
+   986→   986→      setPhone('')
+   987→   987→      setNote('')
+   988→   988→    } catch (error) {
+   989→   989→      toast.error(error instanceof Error ? error.message : 'Đặt hàng thất bại')
+   990→   990→    }
+   991→   991→    setCheckingOut(false)
+   992→   992→  }
+   993→   993→
+   994→   994→  if (cart.length === 0) {
+   995→   995→    return (
+   996→   996→      <div className="text-center py-16">
+   997→   997→        <div className="text-5xl mb-4">🛒</div>
+   998→   998→        <h3 className="text-lg font-semibold mb-1">Giỏ hàng trống</h3>
+   999→   999→        <p className="text-muted-foreground">Hãy thêm sản phẩm vào giỏ hàng</p>
+  1000→  1000→      </div>
+  1001→  1001→    )
+  1002→  1002→  }
+  1003→  1003→
+  1004→  1004→  return (
+  1005→  1005→    <div className="max-w-2xl">
+  1006→  1006→      <h2 className="text-xl font-bold mb-4">Giỏ hàng ({cart.length} sản phẩm)</h2>
+  1007→  1007→      <div className="space-y-3 mb-6">
+  1008→  1008→        {cart.map((item) => (
+  1009→  1009→          <Card key={item.id} className="hover:shadow-sm transition-shadow">
+  1010→  1010→            <CardContent className="p-4">
+  1011→  1011→              <div className="flex gap-3">
+  1012→  1012→                <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+  1013→  1013→                  {item.product.image ? (
+  1014→  1014→                    <img src={item.product.image} alt={item.product.name} className="w-full h-full rounded-lg object-cover" />
+  1015→  1015→                  ) : (
+  1016→  1016→                    <Package className="h-6 w-6 text-muted-foreground" />
+  1017→  1017→                  )}
+  1018→  1018→                </div>
+  1019→  1019→                <div className="flex-1 min-w-0">
+  1020→  1020→                  <h4 className="font-medium text-sm truncate">{item.product.name}</h4>
+  1021→  1021→                  <p className="text-xs text-muted-foreground">{item.product.shop.name} · {item.product.unit}</p>
+  1022→  1022→                  <p className="text-green-700 font-bold text-sm mt-0.5">{formatPrice(item.product.price)}</p>
+  1023→  1023→                </div>
+  1024→  1024→                <div className="flex flex-col items-end gap-2">
+  1025→  1025→                  <Button
+  1026→  1026→                    variant="ghost"
+  1027→  1027→                    size="sm"
+  1028→  1028→                    className="h-6 w-6 p-0 text-muted-foreground hover:text-red-500"
+  1029→  1029→                    onClick={() => removeCartItem(item.id)}
+  1030→  1030→                  >
+  1031→  1031→                    <Trash2 className="h-4 w-4" />
+  1032→  1032→                  </Button>
+  1033→  1033→                  <div className="flex items-center gap-1">
+  1034→  1034→                    <Button
+  1035→  1035→                      variant="outline"
+  1036→  1036→                      size="sm"
+  1037→  1037→                      className="h-7 w-7 p-0"
+  1038→  1038→                      onClick={() => updateCartItem(item.id, Math.max(1, item.quantity - 1))}
+  1039→  1039→                    >
+  1040→  1040→                      <Minus className="h-3 w-3" />
+  1041→  1041→                    </Button>
+  1042→  1042→                    <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+  1043→  1043→                    <Button
+  1044→  1044→                      variant="outline"
+  1045→  1045→                      size="sm"
+  1046→  1046→                      className="h-7 w-7 p-0"
+  1047→  1047→                      onClick={() => updateCartItem(item.id, item.quantity + 1)}
+  1048→  1048→                    >
+  1049→  1049→                      <Plus className="h-3 w-3" />
+  1050→  1050→                    </Button>
+  1051→  1051→                  </div>
+  1052→  1052→                </div>
+  1053→  1053→              </div>
+  1054→  1054→            </CardContent>
+  1055→  1055→          </Card>
+  1056→  1056→        ))}
+  1057→  1057→      </div>
+  1058→  1058→
+  1059→  1059→      <Separator className="my-4" />
+  1060→  1060→
+  1061→  1061→      <div className="space-y-3">
+  1062→  1062→        <div className="flex justify-between text-sm">
+  1063→  1063→          <span>Tạm tính</span>
+  1064→  1064→          <span>{formatPrice(cartTotal)}</span>
+  1065→  1065→        </div>
+  1066→  1066→        <div className="flex justify-between text-sm">
+  1067→  1067→          <span>Phí giao hàng</span>
+  1068→  1068→          <span>{formatPrice(15000)}</span>
+  1069→  1069→        </div>
+  1070→  1070→        <Separator />
+  1071→  1071→        <div className="flex justify-between font-bold text-lg">
+  1072→  1072→          <span>Tổng cộng</span>
+  1073→  1073→          <span className="text-green-700">{formatPrice(cartTotal + 15000)}</span>
+  1074→  1074→        </div>
+  1075→  1075→      </div>
+  1076→  1076→
+  1077→  1077→      <Separator className="my-4" />
+  1078→  1078→
+  1079→  1079→      <div className="space-y-3">
+  1080→  1080→        <h3 className="font-semibold">Thông tin giao hàng</h3>
+  1081→  1081→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  1082→  1082→          <div className="space-y-1">
+  1083→  1083→            <Label className="text-xs">Địa chỉ giao hàng *</Label>
+  1084→  1084→            <Input placeholder="Số nhà, đường, quận..." value={address} onChange={(e) => setAddress(e.target.value)} />
+  1085→  1085→          </div>
+  1086→  1086→          <div className="space-y-1">
+  1087→  1087→            <Label className="text-xs">Số điện thoại *</Label>
+  1088→  1088→            <Input placeholder="0901234567" value={phone} onChange={(e) => setPhone(e.target.value)} />
+  1089→  1089→          </div>
+  1090→  1090→        </div>
+  1091→  1091→        <div className="space-y-1">
+  1092→  1092→          <Label className="text-xs">Ghi chú</Label>
+  1093→  1093→          <Textarea placeholder="Ghi chú cho người giao hàng..." value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
+  1094→  1094→        </div>
+  1095→  1095→        <Button className="w-full bg-green-600 hover:bg-green-700 text-white" size="lg" onClick={handleCheckout} disabled={checkingOut}>
+  1096→  1096→          {checkingOut ? (
+  1097→  1097→            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Đang đặt hàng...</>
+  1098→  1098→          ) : (
+  1099→  1099→            'Đặt hàng (COD)'
+  1100→  1100→          )}
+  1101→  1101→        </Button>
+  1102→  1102→      </div>
+  1103→  1103→    </div>
+  1104→  1104→  )
+  1105→  1105→}
+  1106→  1106→
+  1107→  1107→// ==================== ORDERS TAB ====================
+  1108→  1108→function OrdersTab() {
+  1109→  1109→  const [orders, setOrders] = useState<Order[]>([])
+  1110→  1110→  const [loading, setLoading] = useState(true)
+  1111→  1111→  const [statusFilter, setStatusFilter] = useState('all')
+  1112→  1112→  const [ratingOrderId, setRatingOrderId] = useState<string | null>(null)
+  1113→  1113→  const [ratedOrderIds, setRatedOrderIds] = useState<Set<string>>(new Set())
+  1114→  1114→
+  1115→  1115→  const fetchOrders = useCallback(async () => {
+  1116→  1116→    try {
+  1117→  1117→      const params = new URLSearchParams()
+  1118→  1118→      if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
+  1119→  1119→      const res = await fetch(`/api/orders?${params}`)
+  1120→  1120→      if (res.ok) {
+  1121→  1121→        const data = await res.json()
+  1122→  1122→        setOrders(data.orders)
+  1123→  1123→      }
+  1124→  1124→    } catch { /* ignore */ }
+  1125→  1125→  }, [statusFilter])
+  1126→  1126→
+  1127→  1127→  useEffect(() => {
+  1128→  1128→    let cancelled = false
+  1129→  1129→    const load = async () => {
+  1130→  1130→      setLoading(true)
+  1131→  1131→      await fetchOrders()
+  1132→  1132→      if (!cancelled) setLoading(false)
+  1133→  1133→    }
+  1134→  1134→    load()
+  1135→  1135→    return () => { cancelled = true }
+  1136→  1136→  }, [fetchOrders])
+  1137→  1137→
+  1138→  1138→  const handleCancel = async (orderId: string) => {
+  1139→  1139→    try {
+  1140→  1140→      const res = await fetch(`/api/orders/${orderId}`, {
+  1141→  1141→        method: 'PUT',
+  1142→  1142→        headers: { 'Content-Type': 'application/json' },
+  1143→  1143→        body: JSON.stringify({ status: 'CANCELLED' }),
+  1144→  1144→      })
+  1145→  1145→      const data = await res.json()
+  1146→  1146→      if (!res.ok) throw new Error(data.error)
+  1147→  1147→      toast.success('Đã hủy đơn hàng')
+  1148→  1148→      fetchOrders()
+  1149→  1149→    } catch (error) {
+  1150→  1150→      toast.error(error instanceof Error ? error.message : 'Không thể hủy đơn hàng')
+  1151→  1151→    }
+  1152→  1152→  }
+  1153→  1153→
+  1154→  1154→  const handleRateSubmit = async (orderId: string, productId: string, rating: number, comment: string) => {
+  1155→  1155→    try {
+  1156→  1156→      const res = await fetch(`/api/products/${productId}/reviews`, {
+  1157→  1157→        method: 'POST',
+  1158→  1158→        headers: { 'Content-Type': 'application/json' },
+  1159→  1159→        body: JSON.stringify({ rating, comment }),
+  1160→  1160→      })
+  1161→  1161→      const data = await res.json()
+  1162→  1162→      if (!res.ok) throw new Error(data.error || 'Đánh giá thất bại')
+  1163→  1163→      toast.success('Cảm ơn bạn đã đánh giá! ⭐')
+  1164→  1164→      setRatedOrderIds(prev => new Set(prev).add(orderId))
+  1165→  1165→      setRatingOrderId(null)
+  1166→  1166→    } catch (error) {
+  1167→  1167→      toast.error(error instanceof Error ? error.message : 'Đánh giá thất bại')
+  1168→  1168→    }
+  1169→  1169→  }
+  1170→  1170→
+  1171→  1171→  return (
+  1172→  1172→    <div>
+  1173→  1173→      <div className="flex items-center justify-between mb-4">
+  1174→  1174→        <h2 className="text-xl font-bold">Đơn hàng</h2>
+  1175→  1175→        <Select value={statusFilter} onValueChange={setStatusFilter}>
+  1176→  1176→          <SelectTrigger className="w-44">
+  1177→  1177→            <SelectValue placeholder="Lọc trạng thái" />
+  1178→  1178→          </SelectTrigger>
+  1179→  1179→          <SelectContent>
+  1180→  1180→            <SelectItem value="all">Tất cả</SelectItem>
+  1181→  1181→            <SelectItem value="PENDING">Chờ xác nhận</SelectItem>
+  1182→  1182→            <SelectItem value="CONFIRMED">Đã xác nhận</SelectItem>
+  1183→  1183→            <SelectItem value="PREPARING">Đang chuẩn bị</SelectItem>
+  1184→  1184→            <SelectItem value="SHIPPING">Đang giao</SelectItem>
+  1185→  1185→            <SelectItem value="DELIVERED">Đã giao</SelectItem>
+  1186→  1186→            <SelectItem value="CANCELLED">Đã hủy</SelectItem>
+  1187→  1187→          </SelectContent>
+  1188→  1188→        </Select>
+  1189→  1189→      </div>
+  1190→  1190→
+  1191→  1191→      {loading ? (
+  1192→  1192→        <div className="space-y-4">
+  1193→  1193→          {Array.from({ length: 3 }).map((_, i) => (
+  1194→  1194→            <Card key={i}><CardContent className="p-4"><Skeleton className="h-24 w-full" /></CardContent></Card>
+  1195→  1195→          ))}
+  1196→  1196→        </div>
+  1197→  1197→      ) : orders.length === 0 ? (
+  1198→  1198→        <div className="text-center py-16">
+  1199→  1199→          <div className="text-5xl mb-4">📋</div>
+  1200→  1200→          <h3 className="text-lg font-semibold mb-1">Chưa có đơn hàng</h3>
+  1201→  1201→          <p className="text-muted-foreground">Đơn hàng của bạn sẽ xuất hiện ở đây</p>
+  1202→  1202→        </div>
+  1203→  1203→      ) : (
+  1204→  1204→        <div className="space-y-4">
+  1205→  1205→          {orders.map((order) => (
+  1206→  1206→            <Card key={order.id} className="hover:shadow-sm transition-shadow">
+  1207→  1207→              <CardContent className="p-4">
+  1208→  1208→                <div className="flex items-start justify-between mb-3">
+  1209→  1209→                  <div>
+  1210→  1210→                    <p className="font-semibold text-sm">Đơn #{order.id.slice(-8)}</p>
+  1211→  1211→                    <p className="text-xs text-muted-foreground">{formatDateTime(order.createdAt)}</p>
+  1212→  1212→                  </div>
+  1213→  1213→                  <div className="flex items-center gap-2 flex-wrap justify-end">
+  1214→  1214→                    <Badge className={`${getStatusColor(order.status)} text-xs`}>
+  1215→  1215→                      {getStatusLabel(order.status)}
+  1216→  1216→                    </Badge>
+  1217→  1217→                    <Badge className={`${getPaymentStatusColor(order.paymentStatus)} text-xs`}>
+  1218→  1218→                      {getPaymentStatusLabel(order.paymentStatus)}
+  1219→  1219→                    </Badge>
+  1220→  1220→                    {/* Rated badge */}
+  1221→  1221→                    {ratedOrderIds.has(order.id) && (
+  1222→  1222→                      <Badge className="bg-green-100 text-green-700 text-xs">
+  1223→  1223→                        <CheckCircle2 className="h-3 w-3 mr-1" />
+  1224→  1224→                        Đã đánh giá
+  1225→  1225→                      </Badge>
+  1226→  1226→                    )}
+  1227→  1227→                  </div>
+  1228→  1228→                </div>
+  1229→  1229→                <div className="text-sm text-muted-foreground mb-2">
+  1230→  1230→                  🏪 {order.shop.name}
+  1231→  1231→                </div>
+  1232→  1232→                <div className="space-y-1 mb-3">
+  1233→  1233→                  {order.items.map((item) => (
+  1234→  1234→                    <div key={item.id} className="flex justify-between text-sm">
+  1235→  1235→                      <span>{item.product.name} x{item.quantity}</span>
+  1236→  1236→                      <span>{formatPrice(item.price * item.quantity)}</span>
+  1237→  1237→                    </div>
+  1238→  1238→                  ))}
+  1239→  1239→                  <Separator className="my-1" />
+  1240→  1240→                  <div className="flex justify-between text-sm">
+  1241→  1241→                    <span>Phí giao hàng</span>
+  1242→  1242→                    <span>{formatPrice(order.shippingFee)}</span>
+  1243→  1243→                  </div>
+  1244→  1244→                  <div className="flex justify-between font-bold">
+  1245→  1245→                    <span>Tổng cộng</span>
+  1246→  1246→                    <span className="text-green-700">{formatPrice(order.total + order.shippingFee)}</span>
+  1247→  1247→                  </div>
+  1248→  1248→                </div>
+  1249→  1249→                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+  1250→  1250→                  <MapPin className="h-3 w-3" />
+  1251→  1251→                  {order.address}
+  1252→  1252→                  <Phone className="h-3 w-3 ml-2" />
+  1253→  1253→                  {order.phone}
+  1254→  1254→                </div>
+  1255→  1255→                <div className="flex items-center justify-between">
+  1256→  1256→                  <span className="text-xs text-muted-foreground">{getPaymentMethodLabel(order.paymentMethod)}</span>
+  1257→  1257→                  <div className="flex items-center gap-2">
+  1258→  1258→                    {order.status === 'PENDING' && (
+  1259→  1259→                      <Button variant="destructive" size="sm" onClick={() => handleCancel(order.id)}>
+  1260→  1260→                        Hủy đơn
+  1261→  1261→                      </Button>
+  1262→  1262→                    )}
+  1263→  1263→                    {order.status === 'DELIVERED' && !ratedOrderIds.has(order.id) && (
+  1264→  1264→                      <Button
+  1265→  1265→                        variant="outline"
+  1266→  1266→                        size="sm"
+  1267→  1267→                        className="text-green-700 border-green-200 hover:bg-green-50"
+  1268→  1268→                        onClick={() => setRatingOrderId(order.id)}
+  1269→  1269→                      >
+  1270→  1270→                        <Star className="h-4 w-4 mr-1" />
+  1271→  1271→                        Đánh giá
+  1272→  1272→                      </Button>
+  1273→  1273→                    )}
+  1274→  1274→                  </div>
+  1275→  1275→                </div>
+  1276→  1276→              </CardContent>
+  1277→  1277→            </Card>
+  1278→  1278→          ))}
+  1279→  1279→        </div>
+  1280→  1280→      )}
+  1281→  1281→
+  1282→  1282→      {/* Rating Dialog */}
+  1283→  1283→      {ratingOrderId && (
+  1284→  1284→        <RatingDialog
+  1285→  1285→          orderId={ratingOrderId}
+  1286→  1286→          order={orders.find(o => o.id === ratingOrderId)}
+  1287→  1287→          open={!!ratingOrderId}
+  1288→  1288→          onClose={() => setRatingOrderId(null)}
+  1289→  1289→          onSubmit={handleRateSubmit}
+  1290→  1290→        />
+  1291→  1291→      )}
+  1292→  1292→    </div>
+  1293→  1293→  )
+  1294→  1294→}
+  1295→  1295→
+  1296→  1296→// ==================== RATING DIALOG ====================
+  1297→  1297→function RatingDialog({
+  1298→  1298→  orderId,
+  1299→  1299→  order,
+  1300→  1300→  open,
+  1301→  1301→  onClose,
+  1302→  1302→  onSubmit,
+  1303→  1303→}: {
+  1304→  1304→  orderId: string
+  1305→  1305→  order: Order | undefined
+  1306→  1306→  open: boolean
+  1307→  1307→  onClose: () => void
+  1308→  1308→  onSubmit: (orderId: string, productId: string, rating: number, comment: string) => void
+  1309→  1309→}) {
+  1310→  1310→  const [rating, setRating] = useState(0)
+  1311→  1311→  const [comment, setComment] = useState('')
+  1312→  1312→  const [selectedProduct, setSelectedProduct] = useState<string>('')
+  1313→  1313→  const [submitting, setSubmitting] = useState(false)
+  1314→  1314→
+  1315→  1315→  // Reset form and set default product when dialog opens/closes
+  1316→  1316→  const handleClose = () => {
+  1317→  1317→    setRating(0)
+  1318→  1318→    setComment('')
+  1319→  1319→    setSelectedProduct('')
+  1320→  1320→    onClose()
+  1321→  1321→  }
+  1322→  1322→
+  1323→  1323→  // Set default product when order data becomes available
+  1324→  1324→  if (open && order?.items.length && !selectedProduct) {
+  1325→  1325→    setSelectedProduct(order.items[0].productId)
+  1326→  1326→  }
+  1327→  1327→
+  1328→  1328→  const handleSubmit = async (e: React.FormEvent) => {
+  1329→  1329→    e.preventDefault()
+  1330→  1330→    if (rating === 0) {
+  1331→  1331→      toast.error('Vui lòng chọn số sao đánh giá')
+  1332→  1332→      return
+  1333→  1333→    }
+  1334→  1334→    if (!selectedProduct) {
+  1335→  1335→      toast.error('Vui lòng chọn sản phẩm để đánh giá')
+  1336→  1336→      return
+  1337→  1337→    }
+  1338→  1338→    setSubmitting(true)
+  1339→  1339→    await onSubmit(orderId, selectedProduct, rating, comment)
+  1340→  1340→    setSubmitting(false)
+  1341→  1341→  }
+  1342→  1342→
+  1343→  1343→  return (
+  1344→  1344→    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose() }}>
+  1345→  1345→      <DialogContent>
+  1346→  1346→        <DialogHeader>
+  1347→  1347→          <DialogTitle className="flex items-center gap-2">
+  1348→  1348→            <Star className="h-5 w-5 text-yellow-400 fill-yellow-400" />
+  1349→  1349→            Đánh giá đơn hàng
+  1350→  1350→          </DialogTitle>
+  1351→  1351→        </DialogHeader>
+  1352→  1352→        <form onSubmit={handleSubmit} className="space-y-4">
+  1353→  1353→          {order && order.items.length > 1 && (
+  1354→  1354→            <div className="space-y-2">
+  1355→  1355→              <Label>Chọn sản phẩm để đánh giá</Label>
+  1356→  1356→              <Select value={selectedProduct} onValueChange={setSelectedProduct}>
+  1357→  1357→                <SelectTrigger>
+  1358→  1358→                  <SelectValue placeholder="Chọn sản phẩm" />
+  1359→  1359→                </SelectTrigger>
+  1360→  1360→                <SelectContent>
+  1361→  1361→                  {order.items.map((item) => (
+  1362→  1362→                    <SelectItem key={item.productId} value={item.productId}>
+  1363→  1363→                      {item.product.name} x{item.quantity}
+  1364→  1364→                    </SelectItem>
+  1365→  1365→                  ))}
+  1366→  1366→                </SelectContent>
+  1367→  1367→              </Select>
+  1368→  1368→            </div>
+  1369→  1369→          )}
+  1370→  1370→
+  1371→  1371→          <div className="space-y-2">
+  1372→  1372→            <Label>Đánh giá của bạn</Label>
+  1373→  1373→            <StarPicker value={rating} onChange={setRating} />
+  1374→  1374→            {rating > 0 && (
+  1375→  1375→              <p className="text-xs text-muted-foreground">
+  1376→  1376→                {rating === 1 && 'Rất không hài lòng'}
+  1377→  1377→                {rating === 2 && 'Không hài lòng'}
+  1378→  1378→                {rating === 3 && 'Bình thường'}
+  1379→  1379→                {rating === 4 && 'Hài lòng'}
+  1380→  1380→                {rating === 5 && 'Rất hài lòng'}
+  1381→  1381→              </p>
+  1382→  1382→            )}
+  1383→  1383→          </div>
+  1384→  1384→
+  1385→  1385→          <div className="space-y-2">
+  1386→  1386→            <Label>Nhận xét (tùy chọn)</Label>
+  1387→  1387→            <Textarea
+  1388→  1388→              placeholder="Chia sẻ trải nghiệm của bạn..."
+  1389→  1389→              value={comment}
+  1390→  1390→              onChange={(e) => setComment(e.target.value)}
+  1391→  1391→              rows={3}
+  1392→  1392→            />
+  1393→  1393→          </div>
+  1394→  1394→
+  1395→  1395→          <div className="flex gap-2">
+  1396→  1396→            <Button type="submit" className="flex-1 bg-green-600 hover:bg-green-700 text-white" disabled={submitting || rating === 0}>
+  1397→  1397→              {submitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Đang gửi...</> : 'Gửi đánh giá'}
+  1398→  1398→            </Button>
+  1399→  1399→            <Button type="button" variant="outline" onClick={onClose}>Hủy</Button>
+  1400→  1400→          </div>
+  1401→  1401→        </form>
+  1402→  1402→      </DialogContent>
+  1403→  1403→    </Dialog>
+  1404→  1404→  )
+  1405→  1405→}
+  1406→  1406→
+  1407→  1407→// ==================== PROFILE TAB ====================
+  1408→  1408→function ProfileTab() {
+  1409→  1409→  const { user } = useAppStore()
+  1410→  1410→  if (!user) return null
+  1411→  1411→
+  1412→  1412→  return (
+  1413→  1413→    <div className="max-w-lg">
+  1414→  1414→      <h2 className="text-xl font-bold mb-4">Hồ sơ cá nhân</h2>
+  1415→  1415→      <Card>
+  1416→  1416→        <CardContent className="p-6">
+  1417→  1417→          <div className="flex items-center gap-4 mb-6">
+  1418→  1418→            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-2xl font-bold text-green-700">
+  1419→  1419→              {user.name.charAt(0).toUpperCase()}
+  1420→  1420→            </div>
+  1421→  1421→            <div>
+  1422→  1422→              <h3 className="text-lg font-semibold">{user.name}</h3>
+  1423→  1423→              <Badge className="bg-green-100 text-green-700">Người mua</Badge>
+  1424→  1424→            </div>
+  1425→  1425→          </div>
+  1426→  1426→          <div className="space-y-4">
+  1427→  1427→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1428→  1428→              <div>
+  1429→  1429→                <p className="text-xs text-muted-foreground mb-1">Email</p>
+  1430→  1430→                <p className="text-sm font-medium">{user.email}</p>
+  1431→  1431→              </div>
+  1432→  1432→              <div>
+  1433→  1433→                <p className="text-xs text-muted-foreground mb-1">Số điện thoại</p>
+  1434→  1434→                <p className="text-sm font-medium">{user.phone || 'Chưa cập nhật'}</p>
+  1435→  1435→              </div>
+  1436→  1436→              <div>
+  1437→  1437→                <p className="text-xs text-muted-foreground mb-1">Địa chỉ</p>
+  1438→  1438→                <p className="text-sm font-medium">{user.address || 'Chưa cập nhật'}</p>
+  1439→  1439→              </div>
+  1440→  1440→              <div>
+  1441→  1441→                <p className="text-xs text-muted-foreground mb-1">Ngày tham gia</p>
+  1442→  1442→                <p className="text-sm font-medium">{formatDateTime(user.createdAt)}</p>
+  1443→  1443→              </div>
+  1444→  1444→            </div>
+  1445→  1445→          </div>
+  1446→  1446→        </CardContent>
+  1447→  1447→      </Card>
+  1448→  1448→    </div>
+  1449→  1449→  )
+  1450→  1450→}
+  1451→  1451→

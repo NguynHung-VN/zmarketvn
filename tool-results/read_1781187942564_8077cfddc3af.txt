@@ -1,0 +1,1163 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useRef, useCallback } from 'react'
+     4→import { io, Socket } from 'socket.io-client'
+     5→import { Button } from '@/components/ui/button'
+     6→import { Input } from '@/components/ui/input'
+     7→import { Card } from '@/components/ui/card'
+     8→import { Badge } from '@/components/ui/badge'
+     9→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    10→import { ScrollArea } from '@/components/ui/scroll-area'
+    11→import { Skeleton } from '@/components/ui/skeleton'
+    12→import {
+    13→  Dialog,
+    14→  DialogContent,
+    15→  DialogHeader,
+    16→  DialogTitle,
+    17→  DialogTrigger,
+    18→} from '@/components/ui/dialog'
+    19→import { toast } from 'sonner'
+    20→import {
+    21→  Send,
+    22→  ImagePlus,
+    23→  Search,
+    24→  MessageCircle,
+    25→  Plus,
+    26→  ArrowLeft,
+    27→  Loader2,
+    28→  X,
+    29→  Paperclip,
+    30→  RefreshCw,
+    31→  Wifi,
+    32→  WifiOff,
+    33→} from 'lucide-react'
+    34→
+    35→// ─── Types ────────────────────────────────────────────────────────────────────
+    36→
+    37→interface ChatPanelProps {
+    38→  userId: string
+    39→  userName: string
+    40→}
+    41→
+    42→interface ConversationUser {
+    43→  id: string
+    44→  name: string
+    45→  avatar?: string | null
+    46→  role: string
+    47→}
+    48→
+    49→interface Conversation {
+    50→  id: string
+    51→  type: string
+    52→  name?: string | null
+    53→  createdAt: string
+    54→  updatedAt: string
+    55→  otherUser: ConversationUser | null
+    56→  lastMessage: {
+    57→    id: string
+    58→    content: string
+    59→    type: string
+    60→    imageUrl?: string | null
+    61→    senderId: string
+    62→    createdAt: string
+    63→  } | null
+    64→  unreadCount: number
+    65→}
+    66→
+    67→interface ChatMessage {
+    68→  id: string
+    69→  content: string
+    70→  type: string
+    71→  imageUrl?: string | null
+    72→  conversationId: string
+    73→  senderId: string
+    74→  isRead: boolean
+    75→  createdAt: string
+    76→  sender?: {
+    77→    id: string
+    78→    name: string
+    79→    avatar?: string | null
+    80→  }
+    81→}
+    82→
+    83→interface SearchResult {
+    84→  id: string
+    85→  name: string
+    86→  email: string
+    87→  avatar?: string | null
+    88→  role: string
+    89→}
+    90→
+    91→// ─── Constants ───────────────────────────────────────────────────────────────
+    92→
+    93→const POLLING_INTERVAL = 3000 // 3 seconds
+    94→const SOCKET_TIMEOUT = 5000 // 5 seconds before falling back to polling
+    95→
+    96→// ─── Helper: format time ──────────────────────────────────────────────────────
+    97→
+    98→function formatChatTime(dateStr: string): string {
+    99→  const date = new Date(dateStr)
+   100→  const now = new Date()
+   101→  const diffMs = now.getTime() - date.getTime()
+   102→  const diffMins = Math.floor(diffMs / 60000)
+   103→  const diffHours = Math.floor(diffMs / 3600000)
+   104→  const diffDays = Math.floor(diffMs / 86400000)
+   105→
+   106→  if (diffMins < 1) return 'Vừa xong'
+   107→  if (diffMins < 60) return `${diffMins} phút`
+   108→  if (diffHours < 24) return `${diffHours} giờ`
+   109→  if (diffDays < 7) return `${diffDays} ngày`
+   110→  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
+   111→}
+   112→
+   113→function getAvatarEmoji(role: string): string {
+   114→  const map: Record<string, string> = {
+   115→    BUYER: '🛍️',
+   116→    SELLER: '🏪',
+   117→    SHIPPER: '🏍️',
+   118→    ADMIN: '👑',
+   119→  }
+   120→  return map[role] || '👤'
+   121→}
+   122→
+   123→function getRoleLabel(role: string): string {
+   124→  const map: Record<string, string> = {
+   125→    BUYER: 'Người mua',
+   126→    SELLER: 'Tiểu thương',
+   127→    SHIPPER: 'Shipper',
+   128→    ADMIN: 'Quản trị',
+   129→  }
+   130→  return map[role] || role
+   131→}
+   132→
+   133→// ─── ChatPanel Component ─────────────────────────────────────────────────────
+   134→
+   135→export default function ChatPanel({ userId, userName }: ChatPanelProps) {
+   136→  // ── State ─────────────────────────────────────────────────────────────────
+   137→  const [socket, setSocket] = useState<Socket | null>(null)
+   138→  const [isConnected, setIsConnected] = useState(false)
+   139→  const [pollingMode, setPollingMode] = useState(false)
+   140→  const [conversations, setConversations] = useState<Conversation[]>([])
+   141→  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+   142→  const [messages, setMessages] = useState<ChatMessage[]>([])
+   143→  const [newMessage, setNewMessage] = useState('')
+   144→  const [searchQuery, setSearchQuery] = useState('')
+   145→  const [isLoadingConvs, setIsLoadingConvs] = useState(true)
+   146→  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+   147→  const [isSending, setIsSending] = useState(false)
+   148→  const [isUploading, setIsUploading] = useState(false)
+   149→  const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map())
+   150→  const [showMobileMessages, setShowMobileMessages] = useState(false)
+   151→  const [newChatOpen, setNewChatOpen] = useState(false)
+   152→  const [userSearch, setUserSearch] = useState('')
+   153→  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+   154→  const [isSearching, setIsSearching] = useState(false)
+   155→
+   156→  // ── Refs ──────────────────────────────────────────────────────────────────
+   157→  const messagesEndRef = useRef<HTMLDivElement>(null)
+   158→  const typingTimeoutRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+   159→  const fileInputRef = useRef<HTMLInputElement>(null)
+   160→  const messageInputRef = useRef<HTMLInputElement>(null)
+   161→  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+   162→  const convPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+   163→  const socketTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+   164→  const lastMessageIdRef = useRef<string>('') // track latest message for polling
+   165→
+   166→  // ── Derived state ─────────────────────────────────────────────────────────
+   167→  const activeConversation = conversations.find((c) => c.id === activeConversationId)
+   168→
+   169→  const filteredConversations = conversations.filter((conv) => {
+   170→    if (!searchQuery.trim()) return true
+   171→    const q = searchQuery.toLowerCase()
+   172→    return (
+   173→      conv.otherUser?.name.toLowerCase().includes(q) ||
+   174→      conv.name?.toLowerCase().includes(q) ||
+   175→      conv.lastMessage?.content.toLowerCase().includes(q)
+   176→    )
+   177→  })
+   178→
+   179→  const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0)
+   180→
+   181→  // ── Auto-scroll to bottom ─────────────────────────────────────────────────
+   182→  const scrollToBottom = useCallback(() => {
+   183→    setTimeout(() => {
+   184→      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+   185→    }, 100)
+   186→  }, [])
+   187→
+   188→  // ── Start polling for messages ────────────────────────────────────────────
+   189→  const startMessagePolling = useCallback(() => {
+   190→    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current)
+   191→
+   192→    pollingIntervalRef.current = setInterval(async () => {
+   193→      if (!activeConversationId) return
+   194→      try {
+   195→        const res = await fetch(`/api/chat/conversations/${activeConversationId}?limit=50`)
+   196→        if (res.ok) {
+   197→          const data = await res.json()
+   198→          const newMessages: ChatMessage[] = data.messages || []
+   199→          setMessages((prev) => {
+   200→            // Only update if there are new messages
+   201→            if (newMessages.length > prev.length) {
+   202→              // Check if the last message is new
+   203→              const lastNew = newMessages[newMessages.length - 1]
+   204→              if (lastNew && lastNew.id !== lastMessageIdRef.current) {
+   205→                lastMessageIdRef.current = lastNew.id
+   206→                scrollToBottom()
+   207→                return newMessages
+   208→              }
+   209→            }
+   210→            // Check for any new messages by comparing IDs
+   211→            const prevIds = new Set(prev.map(m => m.id))
+   212→            const hasNew = newMessages.some(m => !prevIds.has(m.id))
+   213→            if (hasNew) {
+   214→              lastMessageIdRef.current = newMessages[newMessages.length - 1]?.id || ''
+   215→              scrollToBottom()
+   216→              return newMessages
+   217→            }
+   218→            return prev
+   219→          })
+   220→        }
+   221→      } catch (err) {
+   222→        console.error('[Chat] Polling error:', err)
+   223→      }
+   224→    }, POLLING_INTERVAL)
+   225→  }, [activeConversationId, scrollToBottom])
+   226→
+   227→  // ── Start polling for conversations ───────────────────────────────────────
+   228→  const startConvPolling = useCallback(() => {
+   229→    if (convPollingRef.current) clearInterval(convPollingRef.current)
+   230→
+   231→    convPollingRef.current = setInterval(async () => {
+   232→      try {
+   233→        const res = await fetch('/api/chat/conversations')
+   234→        if (res.ok) {
+   235→          const data = await res.json()
+   236→          setConversations(data.conversations || [])
+   237→        }
+   238→      } catch (err) {
+   239→        console.error('[Chat] Conv polling error:', err)
+   240→      }
+   241→    }, POLLING_INTERVAL * 2) // Less frequent for conversation list
+   242→  }, [])
+   243→
+   244→  // ── Stop all polling ──────────────────────────────────────────────────────
+   245→  const stopPolling = useCallback(() => {
+   246→    if (pollingIntervalRef.current) {
+   247→      clearInterval(pollingIntervalRef.current)
+   248→      pollingIntervalRef.current = null
+   249→    }
+   250→    if (convPollingRef.current) {
+   251→      clearInterval(convPollingRef.current)
+   252→      convPollingRef.current = null
+   253→    }
+   254→  }, [])
+   255→
+   256→  // ── Switch to polling mode ────────────────────────────────────────────────
+   257→  const enablePollingMode = useCallback(() => {
+   258→    console.log('[Chat] Switching to HTTP polling mode (Socket.io unavailable)')
+   259→    setPollingMode(true)
+   260→    startConvPolling()
+   261→    if (activeConversationId) {
+   262→      startMessagePolling()
+   263→    }
+   264→  }, [startConvPolling, startMessagePolling, activeConversationId])
+   265→
+   266→  // ── Socket.io connection ──────────────────────────────────────────────────
+   267→  useEffect(() => {
+   268→    let newSocket: Socket | null = null
+   269→
+   270→    try {
+   271→      newSocket = io('/?XTransformPort=3003', {
+   272→        path: '/socket.io',
+   273→        transports: ['websocket', 'polling'],
+   274→        reconnection: true,
+   275→        reconnectionDelay: 1000,
+   276→        reconnectionAttempts: 5,
+   277→        timeout: SOCKET_TIMEOUT,
+   278→      })
+   279→    } catch (err) {
+   280→      console.error('[Chat] Failed to initialize Socket.io:', err)
+   281→      enablePollingMode()
+   282→      return
+   283→    }
+   284→
+   285→    // Set a timeout: if not connected within SOCKET_TIMEOUT, fall back to polling
+   286→    socketTimeoutRef.current = setTimeout(() => {
+   287→      if (!newSocket?.connected) {
+   288→        console.log('[Chat] Socket.io connection timeout, switching to polling mode')
+   289→        newSocket.disconnect()
+   290→        enablePollingMode()
+   291→      }
+   292→    }, SOCKET_TIMEOUT)
+   293→
+   294→    newSocket.on('connect', () => {
+   295→      console.log('[Chat] Connected to socket server')
+   296→      setIsConnected(true)
+   297→      setPollingMode(false)
+   298→      // Clear the timeout since we connected
+   299→      if (socketTimeoutRef.current) {
+   300→        clearTimeout(socketTimeoutRef.current)
+   301→        socketTimeoutRef.current = null
+   302→      }
+   303→      // Stop any polling since we have real-time connection
+   304→      stopPolling()
+   305→      // Authenticate on connect
+   306→      newSocket!.emit('authenticate', { userId })
+   307→    })
+   308→
+   309→    newSocket.on('disconnect', () => {
+   310→      console.log('[Chat] Disconnected from socket server')
+   311→      setIsConnected(false)
+   312→      // Don't immediately switch to polling on disconnect, let reconnection handle it
+   313→    })
+   314→
+   315→    newSocket.on('connect_error', (err) => {
+   316→      console.warn('[Chat] Socket.io connection error:', err.message)
+   317→      // If we're not in polling mode yet and this is a persistent failure, switch
+   318→      if (!pollingMode) {
+   319→        enablePollingMode()
+   320→      }
+   321→    })
+   322→
+   323→    // Handle new message from socket
+   324→    newSocket.on('new-message', (msg: ChatMessage) => {
+   325→      setMessages((prev) => {
+   326→        // Avoid duplicates
+   327→        if (prev.some((m) => m.id === msg.id)) return prev
+   328→        return [...prev, msg]
+   329→      })
+   330→
+   331→      // Update conversation list's last message and unread count
+   332→      setConversations((prev) =>
+   333→        prev.map((conv) => {
+   334→          if (conv.id === msg.conversationId) {
+   335→            const isMine = msg.senderId === userId
+   336→            return {
+   337→              ...conv,
+   338→              lastMessage: {
+   339→                id: msg.id,
+   340→                content: msg.content,
+   341→                type: msg.type,
+   342→                imageUrl: msg.imageUrl,
+   343→                senderId: msg.senderId,
+   344→                createdAt: msg.createdAt,
+   345→              },
+   346→              unreadCount: isMine || conv.id === activeConversationId
+   347→                ? conv.unreadCount
+   348→                : conv.unreadCount + 1,
+   349→              updatedAt: msg.createdAt,
+   350→            }
+   351→          }
+   352→          return conv
+   353→        })
+   354→      )
+   355→
+   356→      // Show toast for messages not in active conversation
+   357→      if (msg.conversationId !== activeConversationId && msg.senderId !== userId) {
+   358→        const conv = conversations.find((c) => c.id === msg.conversationId)
+   359→        if (conv?.otherUser) {
+   360→          toast.info(`💬 ${conv.otherUser.name}: ${msg.type === 'IMAGE' ? '📷 Hình ảnh' : msg.content.slice(0, 50)}`)
+   361→        }
+   362→      }
+   363→
+   364→      // Auto-scroll if in active conversation
+   365→      if (msg.conversationId === activeConversationId) {
+   366→        scrollToBottom()
+   367→      }
+   368→    })
+   369→
+   370→    // Handle typing indicator
+   371→    newSocket.on('user-typing', (data: { conversationId: string; userId: string; isTyping: boolean }) => {
+   372→      setTypingUsers((prev) => {
+   373→        const next = new Map(prev)
+   374→        if (data.isTyping) {
+   375→          next.set(data.conversationId, data.userId)
+   376→        } else {
+   377→          next.delete(data.conversationId)
+   378→        }
+   379→        return next
+   380→      })
+   381→
+   382→      // Clear typing after 3 seconds
+   383→      if (data.isTyping) {
+   384→        const existing = typingTimeoutRef.current.get(data.conversationId)
+   385→        if (existing) clearTimeout(existing)
+   386→        typingTimeoutRef.current.set(
+   387→          data.conversationId,
+   388→          setTimeout(() => {
+   389→            setTypingUsers((prev) => {
+   390→              const next = new Map(prev)
+   391→              next.delete(data.conversationId)
+   392→              return next
+   393→            })
+   394→          }, 3000)
+   395→        )
+   396→      }
+   397→    })
+   398→
+   399→    // Handle messages read
+   400→    newSocket.on('messages-read', (data: { conversationId: string; userId: string }) => {
+   401→      // Update messages as read
+   402→      setMessages((prev) =>
+   403→        prev.map((m) =>
+   404→          m.conversationId === data.conversationId && m.senderId !== data.userId
+   405→            ? { ...m, isRead: true }
+   406→            : m
+   407→        )
+   408→      )
+   409→    })
+   410→
+   411→    // Handle unread count update
+   412→    newSocket.on('unread-count', () => {
+   413→      // Refresh conversations to get updated unread counts
+   414→      fetchConversations()
+   415→    })
+   416→
+   417→    // Handle errors
+   418→    newSocket.on('error', (data: { message: string }) => {
+   419→      console.error('[Chat] Socket error:', data.message)
+   420→      toast.error(data.message)
+   421→    })
+   422→
+   423→    setSocket(newSocket)
+   424→
+   425→    return () => {
+   426→      newSocket?.disconnect()
+   427→      // Clean up timeouts
+   428→      typingTimeoutRef.current.forEach((timeout) => clearTimeout(timeout))
+   429→      if (socketTimeoutRef.current) {
+   430→        clearTimeout(socketTimeoutRef.current)
+   431→      }
+   432→      stopPolling()
+   433→    }
+   434→  }, [userId])
+   435→
+   436→  // ── Manage polling when active conversation changes ───────────────────────
+   437→  useEffect(() => {
+   438→    if (pollingMode && activeConversationId) {
+   439→      startMessagePolling()
+   440→    }
+   441→    return () => {
+   442→      if (pollingIntervalRef.current) {
+   443→        clearInterval(pollingIntervalRef.current)
+   444→        pollingIntervalRef.current = null
+   445→      }
+   446→    }
+   447→  }, [pollingMode, activeConversationId, startMessagePolling])
+   448→
+   449→  // ── Fetch conversations ───────────────────────────────────────────────────
+   450→  const fetchConversations = useCallback(async () => {
+   451→    try {
+   452→      const res = await fetch('/api/chat/conversations')
+   453→      if (res.ok) {
+   454→        const data = await res.json()
+   455→        setConversations(data.conversations || [])
+   456→      }
+   457→    } catch (err) {
+   458→      console.error('Error fetching conversations:', err)
+   459→    } finally {
+   460→      setIsLoadingConvs(false)
+   461→    }
+   462→  }, [])
+   463→
+   464→  useEffect(() => {
+   465→    fetchConversations()
+   466→  }, [fetchConversations])
+   467→
+   468→  // ── Fetch messages when active conversation changes ───────────────────────
+   469→  useEffect(() => {
+   470→    if (!activeConversationId) {
+   471→      setMessages([])
+   472→      return
+   473→    }
+   474→
+   475→    const fetchMessages = async () => {
+   476→      setIsLoadingMessages(true)
+   477→      try {
+   478→        const res = await fetch(`/api/chat/conversations/${activeConversationId}`)
+   479→        if (res.ok) {
+   480→          const data = await res.json()
+   481→          setMessages(data.messages || [])
+   482→          lastMessageIdRef.current = data.messages?.[data.messages.length - 1]?.id || ''
+   483→          scrollToBottom()
+   484→        }
+   485→      } catch (err) {
+   486→        console.error('Error fetching messages:', err)
+   487→      } finally {
+   488→        setIsLoadingMessages(false)
+   489→      }
+   490→    }
+   491→
+   492→    fetchMessages()
+   493→
+   494→    // Mark as read when opening a conversation
+   495→    if (socket && isConnected && !pollingMode) {
+   496→      socket.emit('mark-read', { conversationId: activeConversationId, userId })
+   497→      // Update local unread count
+   498→      setConversations((prev) =>
+   499→        prev.map((conv) =>
+   500→          conv.id === activeConversationId ? { ...conv, unreadCount: 0 } : conv
+   501→        )
+   502→      )
+   503→    } else if (pollingMode) {
+   504→      // In polling mode, just clear unread locally
+   505→      setConversations((prev) =>
+   506→        prev.map((conv) =>
+   507→          conv.id === activeConversationId ? { ...conv, unreadCount: 0 } : conv
+   508→        )
+   509→      )
+   510→    }
+   511→  }, [activeConversationId, socket, isConnected, userId, scrollToBottom])
+   512→
+   513→  // ── Send message (supports both Socket.io and HTTP API) ───────────────────
+   514→  const sendMessage = useCallback(
+   515→    async (content: string, type: 'TEXT' | 'IMAGE' = 'TEXT', imageUrl?: string) => {
+   516→      if (!activeConversationId || !content.trim()) return
+   517→
+   518→      setIsSending(true)
+   519→      try {
+   520→        if (socket && isConnected && !pollingMode) {
+   521→          // Use Socket.io for real-time delivery
+   522→          socket.emit('send-message', {
+   523→            conversationId: activeConversationId,
+   524→            content: content.trim(),
+   525→            type,
+   526→            imageUrl: imageUrl || null,
+   527→            senderId: userId,
+   528→          })
+   529→        } else {
+   530→          // Use HTTP API as fallback (for polling mode / Vercel)
+   531→          const res = await fetch('/api/chat/messages', {
+   532→            method: 'POST',
+   533→            headers: { 'Content-Type': 'application/json' },
+   534→            body: JSON.stringify({
+   535→              conversationId: activeConversationId,
+   536→              content: content.trim(),
+   537→              type,
+   538→              imageUrl: imageUrl || undefined,
+   539→            }),
+   540→          })
+   541→          if (!res.ok) {
+   542→            const data = await res.json()
+   543→            toast.error(data.error || 'Không thể gửi tin nhắn')
+   544→            return
+   545→          }
+   546→          // Refresh messages to show the sent message
+   547→          const msgRes = await fetch(`/api/chat/conversations/${activeConversationId}?limit=50`)
+   548→          if (msgRes.ok) {
+   549→            const data = await msgRes.json()
+   550→            setMessages(data.messages || [])
+   551→            lastMessageIdRef.current = data.messages?.[data.messages.length - 1]?.id || ''
+   552→            scrollToBottom()
+   553→          }
+   554→          // Refresh conversation list to update last message
+   555→          fetchConversations()
+   556→        }
+   557→        setNewMessage('')
+   558→        // Clear typing
+   559→        if (socket && isConnected && !pollingMode) {
+   560→          socket.emit('typing', {
+   561→            conversationId: activeConversationId,
+   562→            userId,
+   563→            isTyping: false,
+   564→          })
+   565→        }
+   566→      } catch (err) {
+   567→        console.error('Error sending message:', err)
+   568→        toast.error('Không thể gửi tin nhắn')
+   569→      } finally {
+   570→        setIsSending(false)
+   571→      }
+   572→    },
+   573→    [socket, isConnected, pollingMode, activeConversationId, userId, scrollToBottom, fetchConversations]
+   574→  )
+   575→
+   576→  // ── Handle text input change with typing indicator ────────────────────────
+   577→  const handleInputChange = useCallback(
+   578→    (value: string) => {
+   579→      setNewMessage(value)
+   580→      if (socket && isConnected && !pollingMode && activeConversationId) {
+   581→        socket.emit('typing', {
+   582→          conversationId: activeConversationId,
+   583→          userId,
+   584→          isTyping: value.length > 0,
+   585→        })
+   586→      }
+   587→    },
+   588→    [socket, isConnected, pollingMode, activeConversationId, userId]
+   589→  )
+   590→
+   591→  // ── Handle send on Enter ──────────────────────────────────────────────────
+   592→  const handleKeyDown = useCallback(
+   593→    (e: React.KeyboardEvent<HTMLInputElement>) => {
+   594→      if (e.key === 'Enter' && !e.shiftKey) {
+   595→        e.preventDefault()
+   596→        if (newMessage.trim()) {
+   597→          sendMessage(newMessage)
+   598→        }
+   599→      }
+   600→    },
+   601→    [newMessage, sendMessage]
+   602→  )
+   603→
+   604→  // ── Image upload ──────────────────────────────────────────────────────────
+   605→  const handleImageUpload = useCallback(
+   606→    async (e: React.ChangeEvent<HTMLInputElement>) => {
+   607→      const file = e.target.files?.[0]
+   608→      if (!file) return
+   609→
+   610→      setIsUploading(true)
+   611→      try {
+   612→        const formData = new FormData()
+   613→        formData.append('image', file)
+   614→
+   615→        const res = await fetch('/api/chat/upload', {
+   616→          method: 'POST',
+   617→          body: formData,
+   618→        })
+   619→
+   620→        if (res.ok) {
+   621→          const data = await res.json()
+   622→          sendMessage(data.imageUrl, 'IMAGE', data.imageUrl)
+   623→        } else {
+   624→          const data = await res.json()
+   625→          toast.error(data.error || 'Không thể tải ảnh lên')
+   626→        }
+   627→      } catch (err) {
+   628→        console.error('Error uploading image:', err)
+   629→        toast.error('Không thể tải ảnh lên')
+   630→      } finally {
+   631→        setIsUploading(false)
+   632→        // Reset file input
+   633→        if (fileInputRef.current) {
+   634→          fileInputRef.current.value = ''
+   635→        }
+   636→      }
+   637→    },
+   638→    [sendMessage]
+   639→  )
+   640→
+   641→  // ── Search users for new conversation ─────────────────────────────────────
+   642→  const searchUsers = useCallback(async (query: string) => {
+   643→    setUserSearch(query)
+   644→    if (!query.trim()) {
+   645→      setSearchResults([])
+   646→      return
+   647→    }
+   648→
+   649→    setIsSearching(true)
+   650→    try {
+   651→      const res = await fetch(`/api/chat/users?search=${encodeURIComponent(query)}`)
+   652→      if (res.ok) {
+   653→        const data = await res.json()
+   654→        setSearchResults(data.users || [])
+   655→      }
+   656→    } catch (err) {
+   657→      console.error('Error searching users:', err)
+   658→    } finally {
+   659→      setIsSearching(false)
+   660→    }
+   661→  }, [])
+   662→
+   663→  // ── Start new conversation ────────────────────────────────────────────────
+   664→  const startConversation = useCallback(
+   665→    async (targetUserId: string) => {
+   666→      try {
+   667→        const res = await fetch('/api/chat/conversations', {
+   668→          method: 'POST',
+   669→          headers: { 'Content-Type': 'application/json' },
+   670→          body: JSON.stringify({ targetUserId }),
+   671→        })
+   672→
+   673→        if (res.ok) {
+   674→          const data = await res.json()
+   675→          const conv = data.conversation
+   676→
+   677→          // If new conversation, add to list
+   678→          if (!data.existing) {
+   679→            setConversations((prev) => [conv, ...prev])
+   680→          } else {
+   681→            // Update existing or add if not present
+   682→            setConversations((prev) => {
+   683→              const exists = prev.some((c) => c.id === conv.id)
+   684→              if (!exists) return [conv, ...prev]
+   685→              return prev.map((c) => (c.id === conv.id ? conv : c))
+   686→            })
+   687→          }
+   688→
+   689→          setActiveConversationId(conv.id)
+   690→          setShowMobileMessages(true)
+   691→          setNewChatOpen(false)
+   692→          setUserSearch('')
+   693→          setSearchResults([])
+   694→        } else {
+   695→          const data = await res.json()
+   696→          toast.error(data.error || 'Không thể tạo hội thoại')
+   697→        }
+   698→      } catch (err) {
+   699→        console.error('Error creating conversation:', err)
+   700→        toast.error('Không thể tạo hội thoại')
+   701→      }
+   702→    },
+   703→    []
+   704→  )
+   705→
+   706→  // ── Select conversation ───────────────────────────────────────────────────
+   707→  const selectConversation = useCallback((convId: string) => {
+   708→    setActiveConversationId(convId)
+   709→    setShowMobileMessages(true)
+   710→  }, [])
+   711→
+   712→  // ── Back to conversation list (mobile) ────────────────────────────────────
+   713→  const backToList = useCallback(() => {
+   714→    setShowMobileMessages(false)
+   715→  }, [])
+   716→
+   717→  // ── Connection status component ───────────────────────────────────────────
+   718→  const ConnectionStatus = () => (
+   719→    <div className="flex items-center gap-1.5">
+   720→      {pollingMode ? (
+   721→        <>
+   722→          <RefreshCw className="h-3 w-3 text-amber-500" />
+   723→          <span className="text-xs text-amber-600">Tự động cập nhật</span>
+   724→        </>
+   725→      ) : isConnected ? (
+   726→        <>
+   727→          <span className="h-2 w-2 rounded-full bg-green-500" />
+   728→          <span className="text-xs text-green-600">Trực tuyến</span>
+   729→        </>
+   730→      ) : (
+   731→        <>
+   732→          <span className="h-2 w-2 rounded-full bg-red-400" />
+   733→          <span className="text-xs text-muted-foreground">Đang kết nối...</span>
+   734→        </>
+   735→      )}
+   736→    </div>
+   737→  )
+   738→
+   739→  // ─── RENDER ───────────────────────────────────────────────────────────────
+   740→
+   741→  return (
+   742→    <div className="flex h-[calc(100vh-180px)] min-h-[400px] rounded-xl border bg-white shadow-sm overflow-hidden">
+   743→      {/* ── LEFT SIDEBAR: Conversation List ────────────────────────────────── */}
+   744→      <div
+   745→        className={`w-full md:w-80 lg:w-96 border-r flex flex-col bg-muted/20 ${
+   746→          showMobileMessages ? 'hidden md:flex' : 'flex'
+   747→        }`}
+   748→      >
+   749→        {/* Sidebar Header */}
+   750→        <div className="p-4 border-b space-y-3">
+   751→          <div className="flex items-center justify-between">
+   752→            <div className="flex items-center gap-2">
+   753→              <MessageCircle className="h-5 w-5 text-green-600" />
+   754→              <h3 className="font-semibold text-sm">Tin nhắn</h3>
+   755→              {totalUnread > 0 && (
+   756→                <Badge className="bg-green-600 text-white text-xs px-1.5 py-0 h-5 min-w-[20px] flex items-center justify-center">
+   757→                  {totalUnread}
+   758→                </Badge>
+   759→              )}
+   760→            </div>
+   761→            <div className="flex items-center gap-1">
+   762→              <ConnectionStatus />
+   763→              {/* New chat button */}
+   764→              <Dialog open={newChatOpen} onOpenChange={setNewChatOpen}>
+   765→                <DialogTrigger asChild>
+   766→                  <Button variant="ghost" size="icon" className="h-8 w-8">
+   767→                    <Plus className="h-4 w-4" />
+   768→                  </Button>
+   769→                </DialogTrigger>
+   770→                <DialogContent className="sm:max-w-md">
+   771→                  <DialogHeader>
+   772→                    <DialogTitle>Tin nhắn mới</DialogTitle>
+   773→                  </DialogHeader>
+   774→                  <div className="space-y-4">
+   775→                    <div className="relative">
+   776→                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   777→                      <Input
+   778→                        placeholder="Tìm người dùng..."
+   779→                        className="pl-9"
+   780→                        value={userSearch}
+   781→                        onChange={(e) => searchUsers(e.target.value)}
+   782→                      />
+   783→                    </div>
+   784→                    <div className="max-h-64 overflow-y-auto space-y-1">
+   785→                      {isSearching && (
+   786→                        <div className="flex items-center justify-center p-4">
+   787→                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+   788→                        </div>
+   789→                      )}
+   790→                      {!isSearching && userSearch && searchResults.length === 0 && (
+   791→                        <p className="text-sm text-muted-foreground text-center py-4">
+   792→                          Không tìm thấy người dùng
+   793→                        </p>
+   794→                      )}
+   795→                      {searchResults.map((user) => (
+   796→                        <button
+   797→                          key={user.id}
+   798→                          className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted transition-colors text-left"
+   799→                          onClick={() => startConversation(user.id)}
+   800→                        >
+   801→                          <Avatar className="h-9 w-9">
+   802→                            <AvatarFallback className="bg-green-100 text-green-700 text-sm">
+   803→                              {user.avatar || getAvatarEmoji(user.role)}
+   804→                            </AvatarFallback>
+   805→                          </Avatar>
+   806→                          <div className="flex-1 min-w-0">
+   807→                            <p className="text-sm font-medium truncate">{user.name}</p>
+   808→                            <p className="text-xs text-muted-foreground truncate">
+   809→                              {getRoleLabel(user.role)} • {user.email}
+   810→                            </p>
+   811→                          </div>
+   812→                        </button>
+   813→                      ))}
+   814→                    </div>
+   815→                    {/* Quick userId input for testing */}
+   816→                    <div className="border-t pt-3">
+   817→                      <p className="text-xs text-muted-foreground mb-2">
+   818→                        Hoặc nhập User ID:
+   819→                      </p>
+   820→                      <div className="flex gap-2">
+   821→                        <Input
+   822→                          placeholder="Nhập userId..."
+   823→                          className="text-xs"
+   824→                          id="direct-userid-input"
+   825→                          onKeyDown={(e) => {
+   826→                            if (e.key === 'Enter') {
+   827→                              const val = (e.target as HTMLInputElement).value.trim()
+   828→                              if (val) startConversation(val)
+   829→                            }
+   830→                          }}
+   831→                        />
+   832→                        <Button
+   833→                          size="sm"
+   834→                          variant="outline"
+   835→                          onClick={() => {
+   836→                            const input = document.getElementById('direct-userid-input') as HTMLInputElement
+   837→                            if (input?.value.trim()) startConversation(input.value.trim())
+   838→                          }}
+   839→                        >
+   840→                          Chat
+   841→                        </Button>
+   842→                      </div>
+   843→                    </div>
+   844→                  </div>
+   845→                </DialogContent>
+   846→              </Dialog>
+   847→            </div>
+   848→          </div>
+   849→
+   850→          {/* Search bar */}
+   851→          <div className="relative">
+   852→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   853→            <Input
+   854→              placeholder="Tìm tin nhắn..."
+   855→              className="pl-9 h-9 text-sm"
+   856→              value={searchQuery}
+   857→              onChange={(e) => setSearchQuery(e.target.value)}
+   858→            />
+   859→          </div>
+   860→        </div>
+   861→
+   862→        {/* Conversation List */}
+   863→        <div className="flex-1 overflow-y-auto">
+   864→          {isLoadingConvs ? (
+   865→            <div className="p-4 space-y-3">
+   866→              {Array.from({ length: 5 }).map((_, i) => (
+   867→                <div key={i} className="flex items-center gap-3">
+   868→                  <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+   869→                  <div className="flex-1 space-y-1.5">
+   870→                    <Skeleton className="h-4 w-24" />
+   871→                    <Skeleton className="h-3 w-36" />
+   872→                  </div>
+   873→                </div>
+   874→              ))}
+   875→            </div>
+   876→          ) : filteredConversations.length === 0 ? (
+   877→            <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+   878→              <MessageCircle className="h-12 w-12 text-muted-foreground/40 mb-3" />
+   879→              <p className="text-sm text-muted-foreground">
+   880→                {searchQuery ? 'Không tìm thấy tin nhắn' : 'Chưa có tin nhắn nào'}
+   881→              </p>
+   882→              {!searchQuery && (
+   883→                <p className="text-xs text-muted-foreground mt-1">
+   884→                  Nhấn + để bắt đầu trò chuyện
+   885→                </p>
+   886→              )}
+   887→            </div>
+   888→          ) : (
+   889→            filteredConversations.map((conv) => (
+   890→              <button
+   891→                key={conv.id}
+   892→                className={`w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors text-left ${
+   893→                  activeConversationId === conv.id ? 'bg-green-50 border-l-2 border-l-green-600' : ''
+   894→                }`}
+   895→                onClick={() => selectConversation(conv.id)}
+   896→              >
+   897→                <Avatar className="h-10 w-10 shrink-0">
+   898→                  <AvatarFallback className="bg-green-100 text-green-700">
+   899→                    {conv.otherUser?.avatar || getAvatarEmoji(conv.otherUser?.role || '')}
+   900→                  </AvatarFallback>
+   901→                </Avatar>
+   902→                <div className="flex-1 min-w-0">
+   903→                  <div className="flex items-center justify-between">
+   904→                    <p className="text-sm font-medium truncate">
+   905→                      {conv.otherUser?.name || conv.name || 'Hội thoại'}
+   906→                    </p>
+   907→                    {conv.lastMessage && (
+   908→                      <span className="text-xs text-muted-foreground shrink-0 ml-2">
+   909→                        {formatChatTime(conv.lastMessage.createdAt)}
+   910→                      </span>
+   911→                    )}
+   912→                  </div>
+   913→                  <div className="flex items-center justify-between mt-0.5">
+   914→                    <p className="text-xs text-muted-foreground truncate flex-1">
+   915→                      {conv.lastMessage
+   916→                        ? conv.lastMessage.type === 'IMAGE'
+   917→                          ? '📷 Hình ảnh'
+   918→                          : conv.lastMessage.content
+   919→                        : 'Chưa có tin nhắn'}
+   920→                    </p>
+   921→                    {conv.unreadCount > 0 && (
+   922→                      <Badge className="bg-green-600 text-white text-[10px] px-1.5 py-0 h-4 min-w-[18px] flex items-center justify-center ml-2 shrink-0">
+   923→                        {conv.unreadCount}
+   924→                      </Badge>
+   925→                    )}
+   926→                  </div>
+   927→                </div>
+   928→              </button>
+   929→            ))
+   930→          )}
+   931→        </div>
+   932→      </div>
+   933→
+   934→      {/* ── RIGHT PANEL: Message Area ──────────────────────────────────────── */}
+   935→      <div
+   936→        className={`flex-1 flex flex-col ${
+   937→          showMobileMessages ? 'flex' : 'hidden md:flex'
+   938→        }`}
+   939→      >
+   940→        {activeConversation ? (
+   941→          <>
+   942→            {/* Chat Header */}
+   943→            <div className="px-4 py-3 border-b flex items-center gap-3 bg-white">
+   944→              <Button
+   945→                variant="ghost"
+   946→                size="icon"
+   947→                className="h-8 w-8 md:hidden"
+   948→                onClick={backToList}
+   949→              >
+   950→                <ArrowLeft className="h-4 w-4" />
+   951→              </Button>
+   952→              <Avatar className="h-9 w-9">
+   953→                <AvatarFallback className="bg-green-100 text-green-700 text-sm">
+   954→                  {activeConversation.otherUser?.avatar ||
+   955→                    getAvatarEmoji(activeConversation.otherUser?.role || '')}
+   956→                </AvatarFallback>
+   957→              </Avatar>
+   958→              <div className="flex-1 min-w-0">
+   959→                <p className="text-sm font-semibold truncate">
+   960→                  {activeConversation.otherUser?.name || activeConversation.name || 'Hội thoại'}
+   961→                </p>
+   962→                <p className="text-xs text-muted-foreground">
+   963→                  {typingUsers.has(activeConversation.id) ? (
+   964→                    <span className="text-green-600 animate-pulse">Đang nhập...</span>
+   965→                  ) : (
+   966→                    getRoleLabel(activeConversation.otherUser?.role || '')
+   967→                  )}
+   968→                </p>
+   969→              </div>
+   970→              {/* Polling mode indicator in chat header */}
+   971→              {pollingMode && (
+   972→                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 border border-amber-200">
+   973→                  <RefreshCw className="h-3 w-3 text-amber-500" />
+   974→                  <span className="text-[10px] text-amber-600 hidden sm:inline">Tự động</span>
+   975→                </div>
+   976→              )}
+   977→            </div>
+   978→
+   979→            {/* Messages Area */}
+   980→            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-muted/10">
+   981→              {isLoadingMessages ? (
+   982→                <div className="space-y-3">
+   983→                  {Array.from({ length: 6 }).map((_, i) => (
+   984→                    <div
+   985→                      key={i}
+   986→                      className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}
+   987→                    >
+   988→                      <Skeleton
+   989→                        className={`h-10 ${i % 2 === 0 ? 'w-48' : 'w-36'} rounded-xl`}
+   990→                      />
+   991→                    </div>
+   992→                  ))}
+   993→                </div>
+   994→              ) : messages.length === 0 ? (
+   995→                <div className="flex flex-col items-center justify-center h-full text-center">
+   996→                  <MessageCircle className="h-16 w-16 text-muted-foreground/20 mb-3" />
+   997→                  <p className="text-sm text-muted-foreground">
+   998→                    Bắt đầu cuộc trò chuyện
+   999→                  </p>
+  1000→                  <p className="text-xs text-muted-foreground mt-1">
+  1001→                    Gửi tin nhắn đầu tiên nhé!
+  1002→                  </p>
+  1003→                </div>
+  1004→              ) : (
+  1005→                messages.map((msg) => {
+  1006→                  const isMine = msg.senderId === userId
+  1007→                  return (
+  1008→                    <div
+  1009→                      key={msg.id}
+  1010→                      className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}
+  1011→                    >
+  1012→                      <div className={`flex items-end gap-2 max-w-[75%] ${isMine ? 'flex-row-reverse' : ''}`}>
+  1013→                        {/* Avatar for other user */}
+  1014→                        {!isMine && (
+  1015→                          <Avatar className="h-7 w-7 shrink-0">
+  1016→                            <AvatarFallback className="bg-gray-100 text-gray-600 text-xs">
+  1017→                              {msg.sender?.avatar || getAvatarEmoji(activeConversation.otherUser?.role || '')}
+  1018→                            </AvatarFallback>
+  1019→                          </Avatar>
+  1020→                        )}
+  1021→
+  1022→                        <div
+  1023→                          className={`rounded-2xl px-3.5 py-2 ${
+  1024→                            isMine
+  1025→                              ? 'bg-green-600 text-white rounded-br-md'
+  1026→                              : 'bg-gray-100 text-gray-900 rounded-bl-md'
+  1027→                          }`}
+  1028→                        >
+  1029→                          {/* Sender name (for group chats) */}
+  1030→                          {!isMine && msg.sender && (
+  1031→                            <p className="text-xs font-medium text-green-700 mb-0.5">
+  1032→                              {msg.sender.name}
+  1033→                            </p>
+  1034→                          )}
+  1035→
+  1036→                          {/* Message content */}
+  1037→                          {msg.type === 'IMAGE' && msg.imageUrl ? (
+  1038→                            <div className="space-y-1">
+  1039→                              <img
+  1040→                                src={msg.imageUrl}
+  1041→                                alt="Hình ảnh"
+  1042→                                className="max-w-full rounded-lg max-h-60 object-cover cursor-pointer"
+  1043→                                onClick={() => window.open(msg.imageUrl, '_blank')}
+  1044→                              />
+  1045→                              {msg.content && msg.content !== msg.imageUrl && (
+  1046→                                <p className="text-sm">{msg.content}</p>
+  1047→                              )}
+  1048→                            </div>
+  1049→                          ) : (
+  1050→                            <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+  1051→                          )}
+  1052→
+  1053→                          {/* Timestamp */}
+  1054→                          <p
+  1055→                            className={`text-[10px] mt-1 ${
+  1056→                              isMine ? 'text-green-100' : 'text-muted-foreground'
+  1057→                            } text-right`}
+  1058→                          >
+  1059→                            {formatChatTime(msg.createdAt)}
+  1060→                            {isMine && msg.isRead && ' ✓✓'}
+  1061→                          </p>
+  1062→                        </div>
+  1063→                      </div>
+  1064→                    </div>
+  1065→                  )
+  1066→                })
+  1067→              )}
+  1068→
+  1069→              {/* Typing indicator (only shown in socket mode) */}
+  1070→              {!pollingMode && typingUsers.has(activeConversation.id) && (
+  1071→                <div className="flex justify-start items-center gap-2">
+  1072→                  <Avatar className="h-7 w-7">
+  1073→                    <AvatarFallback className="bg-gray-100 text-gray-600 text-xs">
+  1074→                      {activeConversation.otherUser?.avatar || '👤'}
+  1075→                    </AvatarFallback>
+  1076→                  </Avatar>
+  1077→                  <div className="bg-gray-100 rounded-2xl rounded-bl-md px-4 py-2.5">
+  1078→                    <div className="flex gap-1">
+  1079→                      <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+  1080→                      <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+  1081→                      <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+  1082→                    </div>
+  1083→                  </div>
+  1084→                </div>
+  1085→              )}
+  1086→
+  1087→              <div ref={messagesEndRef} />
+  1088→            </div>
+  1089→
+  1090→            {/* Message Input */}
+  1091→            <div className="p-3 border-t bg-white">
+  1092→              <div className="flex items-center gap-2">
+  1093→                {/* Image upload button */}
+  1094→                <Button
+  1095→                  variant="ghost"
+  1096→                  size="icon"
+  1097→                  className="h-9 w-9 shrink-0 text-muted-foreground hover:text-green-600"
+  1098→                  onClick={() => fileInputRef.current?.click()}
+  1099→                  disabled={isUploading}
+  1100→                >
+  1101→                  {isUploading ? (
+  1102→                    <Loader2 className="h-4 w-4 animate-spin" />
+  1103→                  ) : (
+  1104→                    <ImagePlus className="h-4 w-4" />
+  1105→                  )}
+  1106→                </Button>
+  1107→                <input
+  1108→                  ref={fileInputRef}
+  1109→                  type="file"
+  1110→                  accept="image/*"
+  1111→                  className="hidden"
+  1112→                  onChange={handleImageUpload}
+  1113→                />
+  1114→
+  1115→                {/* Text input */}
+  1116→                <Input
+  1117→                  ref={messageInputRef}
+  1118→                  placeholder={pollingMode ? "Nhập tin nhắn... (tự động cập nhật)" : "Nhập tin nhắn..."}
+  1119→                  className="flex-1 h-9 text-sm"
+  1120→                  value={newMessage}
+  1121→                  onChange={(e) => handleInputChange(e.target.value)}
+  1122→                  onKeyDown={handleKeyDown}
+  1123→                  disabled={isSending}
+  1124→                />
+  1125→
+  1126→                {/* Send button */}
+  1127→                <Button
+  1128→                  size="icon"
+  1129→                  className="h-9 w-9 shrink-0 bg-green-600 hover:bg-green-700"
+  1130→                  onClick={() => {
+  1131→                    if (newMessage.trim()) sendMessage(newMessage)
+  1132→                  }}
+  1133→                  disabled={!newMessage.trim() || isSending}
+  1134→                >
+  1135→                  {isSending ? (
+  1136→                    <Loader2 className="h-4 w-4 animate-spin" />
+  1137→                  ) : (
+  1138→                    <Send className="h-4 w-4" />
+  1139→                  )}
+  1140→                </Button>
+  1141→              </div>
+  1142→            </div>
+  1143→          </>
+  1144→        ) : (
+  1145→          /* No conversation selected */
+  1146→          <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
+  1147→            <div className="h-20 w-20 rounded-full bg-green-50 flex items-center justify-center mb-4">
+  1148→              <MessageCircle className="h-10 w-10 text-green-400" />
+  1149→            </div>
+  1150→            <h3 className="text-lg font-semibold text-gray-700">ZMarket Chat</h3>
+  1151→            <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+  1152→              Chọn một hội thoại hoặc bắt đầu trò chuyện mới
+  1153→            </p>
+  1154→            <div className="flex items-center gap-2 mt-4">
+  1155→              <ConnectionStatus />
+  1156→            </div>
+  1157→          </div>
+  1158→        )}
+  1159→      </div>
+  1160→    </div>
+  1161→  )
+  1162→}
+  1163→

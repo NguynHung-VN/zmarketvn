@@ -1,0 +1,48 @@
+{
+  "vegetables": [
+    "https://sfile.chatglm.cn/images-ppt/3f68734c3908.jpeg",
+    "https://sfile.chatglm.cn/images-ppt/33d22c2149e1.jpg",
+    "https://sfile.chatglm.cn/images-ppt/ac93ae2fdeda.jpg",
+    "https://sfile.chatglm.cn/images-ppt/bd5402fc4d51.jpg",
+    "https://sfile.chatglm.cn/images-ppt/1ca79b83d791.jpg"
+  ],
+  "fruits": [
+    "https://sfile.chatglm.cn/images-ppt/4d519899ea23.jpg",
+    "https://sfile.chatglm.cn/images-ppt/d85ba693b6de.jpg",
+    "https://sfile.chatglm.cn/images-ppt/0d655d8a2f4e.jpg",
+    "https://sfile.chatglm.cn/images-ppt/8119f53083e5.jpg",
+    "https://sfile.chatglm.cn/images-ppt/d273821412a9.jpg"
+  ],
+  "meatFish": [
+    "https://sfile.chatglm.cn/images-ppt/32c2ad0b51f0.jpg",
+    "https://sfile.chatglm.cn/images-ppt/a4553cfdd078.jpg",
+    "https://sfile.chatglm.cn/images-ppt/792f935ad3dd.jpg",
+    "https://sfile.chatglm.cn/images-ppt/9d1a0b415074.jpg"
+  ],
+  "spices": [
+    "https://sfile.chatglm.cn/images-ppt/0cb057d51c18.jpg",
+    "https://sfile.chatglm.cn/images-ppt/eb0424f225c0.jpg",
+    "https://sfile.chatglm.cn/images-ppt/346737a6e92f.png"
+  ],
+  "dryGoods": [
+    "https://sfile.chatglm.cn/images-ppt/e3aeb2572a27.jpg",
+    "https://sfile.chatglm.cn/images-ppt/41a0e79b6269.png",
+    "https://sfile.chatglm.cn/images-ppt/f90bfb6c4278.png"
+  ],
+  "drinks": [
+    "https://sfile.chatglm.cn/images-ppt/9dfdf801d403.jpg",
+    "https://sfile.chatglm.cn/images-ppt/5cd1d495c407.jpg",
+    "https://sfile.chatglm.cn/images-ppt/46d2b8ef57f1.jpg"
+  ],
+  "shops": [
+    "https://sfile.chatglm.cn/images-ppt/cddf15cb43ef.jpeg",
+    "https://sfile.chatglm.cn/images-ppt/fcb8cb1247ff.jpg",
+    "https://sfile.chatglm.cn/images-ppt/8b0b6f36f4f6.jpg",
+    "https://sfile.chatglm.cn/images-ppt/950eb89ff455.jpg"
+  ],
+  "hero": [
+    "https://sfile.chatglm.cn/images-ppt/3af2830a2b53.jpg",
+    "https://sfile.chatglm.cn/images-ppt/a18eb3b1be67.jpg",
+    "https://sfile.chatglm.cn/images-ppt/5ca66f18e404.jpg"
+  ]
+}

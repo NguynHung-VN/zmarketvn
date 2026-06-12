@@ -1,0 +1,43 @@
+{
+  "success": true,
+  "query": "tropical fruits Vietnam market",
+  "count": 5,
+  "ranked": true,
+  "results": [
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/4d519899ea23.jpg",
+      "caption": "A vibrant fruit stall display with watermarks and text: \"SANAKY\", \"alamy\", \"Image ID: T563GD\", \"www.alamy.com\".",
+      "source": "Alamy",
+      "original_width": "1300px",
+      "original_height": "956px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/d85ba693b6de.jpg",
+      "caption": "The image displays a vibrant market stall with various tropical fruits, featuring watermarks and text.",
+      "source": "Alamy",
+      "original_width": "1300px",
+      "original_height": "953px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/0d655d8a2f4e.jpg",
+      "caption": "The image contains watermarks and text: alamy, Image ID: DBBCW0, www.alamy.com. suitable for background image",
+      "source": "Alamy",
+      "original_width": "1300px",
+      "original_height": "960px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/8119f53083e5.jpg",
+      "caption": "A street vendor in a conical hat sells rambutans and other fruits at a busy market. The image contains watermarks. Text: depositphotos, Image ID: 165162144, www.depositphotos.com",
+      "source": "DepositPhotos",
+      "original_width": "1600px",
+      "original_height": "1167px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/d273821412a9.jpg",
+      "caption": "A person in a red helmet holds durians at a vibrant fruit stall with watermarks.",
+      "source": "Alamy",
+      "original_width": "1300px",
+      "original_height": "956px"
+    }
+  ]
+}

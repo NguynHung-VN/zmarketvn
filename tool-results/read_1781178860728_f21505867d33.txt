@@ -1,0 +1,753 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect } from 'react'
+     4→import { useAppStore } from '@/lib/store'
+     5→import { formatPrice, getStatusLabel, getStatusColor, getRoleLabel, getRoleColor, formatDateTime, getPaymentStatusLabel } from '@/lib/format'
+     6→import { Button } from '@/components/ui/button'
+     7→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     8→import { Badge } from '@/components/ui/badge'
+     9→import { Skeleton } from '@/components/ui/skeleton'
+    10→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    11→import { Input } from '@/components/ui/input'
+    12→import { Label } from '@/components/ui/label'
+    13→import { Switch } from '@/components/ui/switch'
+    14→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+    15→import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+    16→import { toast } from 'sonner'
+    17→import {
+    18→  LayoutDashboard, Users, Store, ClipboardList,
+    19→  Package, DollarSign, Loader2, Shield, TrendingUp
+    20→} from 'lucide-react'
+    21→import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+    22→
+    23→interface AdminStats {
+    24→  totalUsers: number
+    25→  totalShops: number
+    26→  totalOrders: number
+    27→  totalProducts: number
+    28→  totalRevenue: number
+    29→}
+    30→
+    31→interface AdminUser {
+    32→  id: string
+    33→  email: string
+    34→  name: string
+    35→  phone?: string | null
+    36→  role: string
+    37→  isActive: boolean
+    38→  createdAt: string
+    39→  _count: { orders: number; cartItems: number; reviews: number }
+    40→}
+    41→
+    42→interface AdminShop {
+    43→  id: string
+    44→  name: string
+    45→  address: string
+    46→  rating: number
+    47→  isActive: boolean
+    48→  owner: { id: string; name: string }
+    49→  _count: { products: number }
+    50→}
+    51→
+    52→interface AdminOrder {
+    53→  id: string
+    54→  status: string
+    55→  total: number
+    56→  shippingFee: number
+    57→  paymentMethod: string
+    58→  paymentStatus: string
+    59→  createdAt: string
+    60→  buyer: { id: string; name: string; phone: string }
+    61→  shop: { id: string; name: string }
+    62→  shipper?: { id: string; name: string; phone: string } | null
+    63→  items: { id: string; quantity: number; price: number; product: { id: string; name: string } }[]
+    64→}
+    65→
+    66→const statusColors: Record<string, string> = {
+    67→  PENDING: '#eab308',
+    68→  CONFIRMED: '#3b82f6',
+    69→  PREPARING: '#a855f7',
+    70→  SHIPPING: '#f97316',
+    71→  DELIVERED: '#22c55e',
+    72→  CANCELLED: '#ef4444',
+    73→}
+    74→
+    75→const adminTabs = [
+    76→  { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
+    77→  { id: 'users', label: 'Người dùng', icon: Users },
+    78→  { id: 'shops', label: 'Sạp hàng', icon: Store },
+    79→  { id: 'orders', label: 'Đơn hàng', icon: ClipboardList },
+    80→]
+    81→
+    82→export default function AdminDashboard() {
+    83→  const { user, currentTab, setTab } = useAppStore()
+    84→  const activeTab = currentTab || 'overview'
+    85→
+    86→  const handleTabChange = (tab: string) => {
+    87→    setTab(tab)
+    88→  }
+    89→
+    90→  return (
+    91→    <div className="min-h-screen flex flex-col bg-muted/30">
+    92→      {/* Header - sticky with backdrop blur */}
+    93→      <header className="bg-white/80 backdrop-blur-md border-b sticky top-0 z-50">
+    94→        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+    95→          <div className="flex items-center gap-3">
+    96→            <h1 className="text-xl font-black text-green-700">Z-MARKET</h1>
+    97→            <Badge variant="secondary" className="bg-rose-100 text-rose-700">Quản trị viên</Badge>
+    98→          </div>
+    99→          <div className="flex items-center gap-3">
+   100→            <span className="text-sm text-muted-foreground hidden sm:block">{user?.name}</span>
+   101→            <Button variant="ghost" size="sm" onClick={() => useAppStore.getState().logout()}>
+   102→              Đăng xuất
+   103→            </Button>
+   104→          </div>
+   105→        </div>
+   106→      </header>
+   107→
+   108→      <div className="flex-1 flex">
+   109→        <aside className="hidden md:flex w-56 bg-white border-r flex-col">
+   110→          <nav className="p-3 space-y-1">
+   111→            {adminTabs.map((tab) => (
+   112→              <button
+   113→                key={tab.id}
+   114→                onClick={() => handleTabChange(tab.id)}
+   115→                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+   116→                  activeTab === tab.id
+   117→                    ? 'bg-rose-50 text-rose-700'
+   118→                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+   119→                }`}
+   120→              >
+   121→                <tab.icon className="h-4 w-4" />
+   122→                {tab.label}
+   123→              </button>
+   124→            ))}
+   125→          </nav>
+   126→        </aside>
+   127→
+   128→        {/* Mobile Tab Bar */}
+   129→        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t z-50 safe-area-pb">
+   130→          <div className="flex justify-around">
+   131→            {adminTabs.map((tab) => (
+   132→              <button
+   133→                key={tab.id}
+   134→                onClick={() => handleTabChange(tab.id)}
+   135→                className={`flex flex-col items-center py-2 px-3 text-xs relative transition-colors ${
+   136→                  activeTab === tab.id ? 'text-rose-700' : 'text-muted-foreground'
+   137→                }`}
+   138→              >
+   139→                {activeTab === tab.id && (
+   140→                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-rose-600 rounded-full" />
+   141→                )}
+   142→                <tab.icon className={`h-5 w-5 transition-transform ${activeTab === tab.id ? 'scale-110' : ''}`} />
+   143→                {tab.label}
+   144→              </button>
+   145→            ))}
+   146→          </div>
+   147→        </div>
+   148→
+   149→        <main className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
+   150→          <div className="animate-fadeIn">
+   151→            {activeTab === 'overview' && <OverviewTab />}
+   152→            {activeTab === 'users' && <UsersTab />}
+   153→            {activeTab === 'shops' && <ShopsTab />}
+   154→            {activeTab === 'orders' && <OrdersTab />}
+   155→          </div>
+   156→        </main>
+   157→      </div>
+   158→
+   159→      <footer className="bg-gray-900 text-gray-400 mt-auto">
+   160→        <div className="max-w-6xl mx-auto px-4 py-4 text-center text-sm">
+   161→          © 2024 Z-Market — Chợ Số Việt Nam
+   162→        </div>
+   163→      </footer>
+   164→
+   165→      <style jsx>{`
+   166→        @keyframes fadeIn {
+   167→          from { opacity: 0; transform: translateY(6px); }
+   168→          to { opacity: 1; transform: translateY(0); }
+   169→        }
+   170→        .animate-fadeIn {
+   171→          animation: fadeIn 0.3s ease-out;
+   172→        }
+   173→      `}</style>
+   174→    </div>
+   175→  )
+   176→}
+   177→
+   178→// ==================== OVERVIEW TAB ====================
+   179→function OverviewTab() {
+   180→  const [stats, setStats] = useState<AdminStats | null>(null)
+   181→  const [ordersByStatus, setOrdersByStatus] = useState<Record<string, number>>({})
+   182→  const [usersByRole, setUsersByRole] = useState<Record<string, number>>({})
+   183→  const [recentOrders, setRecentOrders] = useState<AdminOrder[]>([])
+   184→  const [loading, setLoading] = useState(true)
+   185→
+   186→  useEffect(() => {
+   187→    let cancelled = false
+   188→    const fetchStats = async () => {
+   189→      setLoading(true)
+   190→      try {
+   191→        const res = await fetch('/api/admin/stats')
+   192→        if (res.ok && !cancelled) {
+   193→          const data = await res.json()
+   194→          setStats(data.stats)
+   195→          setOrdersByStatus(data.ordersByStatus)
+   196→          setUsersByRole(data.usersByRole)
+   197→          setRecentOrders(data.recentOrders)
+   198→        }
+   199→      } catch { /* ignore */ }
+   200→      if (!cancelled) setLoading(false)
+   201→    }
+   202→    fetchStats()
+   203→    return () => { cancelled = true }
+   204→  }, [])
+   205→
+   206→  if (loading) {
+   207→    return (
+   208→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   209→        {Array.from({ length: 4 }).map((_, i) => (
+   210→          <Card key={i}><CardContent className="p-6"><Skeleton className="h-20 w-full" /></CardContent></Card>
+   211→        ))}
+   212→      </div>
+   213→    )
+   214→  }
+   215→
+   216→  // Prepare chart data
+   217→  const orderChartData = Object.entries(ordersByStatus).map(([status, count]) => ({
+   218→    name: getStatusLabel(status),
+   219→    count,
+   220→    color: statusColors[status] || '#94a3b8',
+   221→  }))
+   222→
+   223→  const userChartData = Object.entries(usersByRole).map(([role, count]) => ({
+   224→    name: getRoleLabel(role),
+   225→    count,
+   226→  }))
+   227→
+   228→  return (
+   229→    <div>
+   230→      <h2 className="text-xl font-bold mb-4">Tổng quan hệ thống</h2>
+   231→
+   232→      {/* Stats Cards */}
+   233→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+   234→        <Card className="border-l-4 border-l-rose-500">
+   235→          <CardContent className="p-6">
+   236→            <div className="flex items-center justify-between">
+   237→              <div>
+   238→                <p className="text-sm text-muted-foreground">Người dùng</p>
+   239→                <p className="text-2xl font-bold">{stats?.totalUsers || 0}</p>
+   240→              </div>
+   241→              <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center">
+   242→                <Users className="h-5 w-5 text-rose-600" />
+   243→              </div>
+   244→            </div>
+   245→          </CardContent>
+   246→        </Card>
+   247→        <Card className="border-l-4 border-l-amber-500">
+   248→          <CardContent className="p-6">
+   249→            <div className="flex items-center justify-between">
+   250→              <div>
+   251→                <p className="text-sm text-muted-foreground">Sạp hàng</p>
+   252→                <p className="text-2xl font-bold">{stats?.totalShops || 0}</p>
+   253→              </div>
+   254→              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+   255→                <Store className="h-5 w-5 text-amber-600" />
+   256→              </div>
+   257→            </div>
+   258→          </CardContent>
+   259→        </Card>
+   260→        <Card className="border-l-4 border-l-blue-500">
+   261→          <CardContent className="p-6">
+   262→            <div className="flex items-center justify-between">
+   263→              <div>
+   264→                <p className="text-sm text-muted-foreground">Đơn hàng</p>
+   265→                <p className="text-2xl font-bold">{stats?.totalOrders || 0}</p>
+   266→              </div>
+   267→              <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+   268→                <Package className="h-5 w-5 text-blue-600" />
+   269→              </div>
+   270→            </div>
+   271→          </CardContent>
+   272→        </Card>
+   273→        <Card className="border-l-4 border-l-green-500">
+   274→          <CardContent className="p-6">
+   275→            <div className="flex items-center justify-between">
+   276→              <div>
+   277→                <p className="text-sm text-muted-foreground">Doanh thu</p>
+   278→                <p className="text-2xl font-bold">{formatPrice(stats?.totalRevenue || 0)}</p>
+   279→              </div>
+   280→              <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
+   281→                <DollarSign className="h-5 w-5 text-green-600" />
+   282→              </div>
+   283→            </div>
+   284→          </CardContent>
+   285→        </Card>
+   286→      </div>
+   287→
+   288→      {/* Revenue Summary */}
+   289→      <Card className="mb-6">
+   290→        <CardContent className="p-6">
+   291→          <div className="flex items-center gap-3 mb-2">
+   292→            <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
+   293→              <TrendingUp className="h-5 w-5 text-green-600" />
+   294→            </div>
+   295→            <div>
+   296→              <p className="text-sm text-muted-foreground">Tổng doanh thu hệ thống</p>
+   297→              <p className="text-3xl font-bold text-green-700">{formatPrice(stats?.totalRevenue || 0)}</p>
+   298→            </div>
+   299→          </div>
+   300→          <p className="text-xs text-muted-foreground mt-2">
+   301→            Bao gồm doanh thu từ tất cả đơn hàng đã xác nhận trên nền tảng
+   302→          </p>
+   303→        </CardContent>
+   304→      </Card>
+   305→
+   306→      {/* Charts Row */}
+   307→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+   308→        {/* Orders by Status Chart */}
+   309→        <Card>
+   310→          <CardHeader>
+   311→            <CardTitle className="text-base">Đơn hàng theo trạng thái</CardTitle>
+   312→          </CardHeader>
+   313→          <CardContent>
+   314→            {orderChartData.length > 0 ? (
+   315→              <ResponsiveContainer width="100%" height={250}>
+   316→                <BarChart data={orderChartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+   317→                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+   318→                  <XAxis
+   319→                    dataKey="name"
+   320→                    tick={{ fontSize: 11 }}
+   321→                    angle={-15}
+   322→                    textAnchor="end"
+   323→                    height={50}
+   324→                  />
+   325→                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+   326→                  <Tooltip
+   327→                    formatter={(value: number) => [value, 'Số đơn']}
+   328→                    contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+   329→                  />
+   330→                  <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={50}>
+   331→                    {orderChartData.map((entry, index) => (
+   332→                      <Cell key={`cell-${index}`} fill={entry.color} />
+   333→                    ))}
+   334→                  </Bar>
+   335→                </BarChart>
+   336→              </ResponsiveContainer>
+   337→            ) : (
+   338→              <div className="text-center py-12 text-sm text-muted-foreground">Chưa có dữ liệu</div>
+   339→            )}
+   340→          </CardContent>
+   341→        </Card>
+   342→
+   343→        {/* Users by Role Chart */}
+   344→        <Card>
+   345→          <CardHeader>
+   346→            <CardTitle className="text-base">Người dùng theo vai trò</CardTitle>
+   347→          </CardHeader>
+   348→          <CardContent>
+   349→            {userChartData.length > 0 ? (
+   350→              <ResponsiveContainer width="100%" height={250}>
+   351→                <BarChart data={userChartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+   352→                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+   353→                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+   354→                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+   355→                  <Tooltip
+   356→                    formatter={(value: number) => [value, 'Số người']}
+   357→                    contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+   358→                  />
+   359→                  <Bar dataKey="count" fill="#16a34a" radius={[6, 6, 0, 0]} maxBarSize={50} />
+   360→                </BarChart>
+   361→              </ResponsiveContainer>
+   362→            ) : (
+   363→              <div className="text-center py-12 text-sm text-muted-foreground">Chưa có dữ liệu</div>
+   364→            )}
+   365→          </CardContent>
+   366→        </Card>
+   367→      </div>
+   368→
+   369→      {/* Recent Orders */}
+   370→      <Card>
+   371→        <CardHeader>
+   372→          <CardTitle className="text-base">Đơn hàng gần đây</CardTitle>
+   373→        </CardHeader>
+   374→        <CardContent>
+   375→          <div className="space-y-3 max-h-64 overflow-y-auto custom-scrollbar">
+   376→            {recentOrders.length === 0 ? (
+   377→              <p className="text-sm text-muted-foreground text-center py-4">Chưa có đơn hàng</p>
+   378→            ) : (
+   379→              recentOrders.map((order) => (
+   380→                <div key={order.id} className="flex items-center justify-between py-2 border-b last:border-0">
+   381→                  <div>
+   382→                    <p className="text-sm font-medium">Đơn #{order.id.slice(-8)}</p>
+   383→                    <p className="text-xs text-muted-foreground">{order.buyer.name} · {formatDateTime(order.createdAt)}</p>
+   384→                  </div>
+   385→                  <div className="flex items-center gap-2">
+   386→                    <span className="text-sm font-medium">{formatPrice(order.total)}</span>
+   387→                    <Badge className={`${getStatusColor(order.status)} text-xs`}>{getStatusLabel(order.status)}</Badge>
+   388→                  </div>
+   389→                </div>
+   390→              ))
+   391→            )}
+   392→          </div>
+   393→        </CardContent>
+   394→      </Card>
+   395→    </div>
+   396→  )
+   397→}
+   398→
+   399→// ==================== USERS TAB ====================
+   400→function UsersTab() {
+   401→  const [users, setUsers] = useState<AdminUser[]>([])
+   402→  const [loading, setLoading] = useState(true)
+   403→  const [search, setSearch] = useState('')
+   404→  const [roleFilter, setRoleFilter] = useState('all')
+   405→  const [editUser, setEditUser] = useState<AdminUser | null>(null)
+   406→
+   407→  useEffect(() => {
+   408→    let cancelled = false
+   409→    const fetchUsers = async () => {
+   410→      setLoading(true)
+   411→      try {
+   412→        const params = new URLSearchParams()
+   413→        if (search) params.set('search', search)
+   414→        if (roleFilter && roleFilter !== 'all') params.set('role', roleFilter)
+   415→        const res = await fetch(`/api/admin/users?${params}`)
+   416→        if (res.ok && !cancelled) {
+   417→          const data = await res.json()
+   418→          setUsers(data.users || [])
+   419→        }
+   420→      } catch { /* ignore */ }
+   421→      if (!cancelled) setLoading(false)
+   422→    }
+   423→    fetchUsers()
+   424→    return () => { cancelled = true }
+   425→  }, [search, roleFilter])
+   426→
+   427→  const handleUpdateUser = async (userId: string, data: { role?: string; isActive?: boolean }) => {
+   428→    try {
+   429→      const res = await fetch(`/api/admin/users/${userId}`, {
+   430→        method: 'PUT',
+   431→        headers: { 'Content-Type': 'application/json' },
+   432→        body: JSON.stringify(data),
+   433→      })
+   434→      const resData = await res.json()
+   435→      if (!res.ok) throw new Error(resData.error)
+   436→      toast.success('Đã cập nhật người dùng')
+   437→      // Refresh user list
+   438→      const params = new URLSearchParams()
+   439→      if (search) params.set('search', search)
+   440→      if (roleFilter && roleFilter !== 'all') params.set('role', roleFilter)
+   441→      const refreshRes = await fetch(`/api/admin/users?${params}`)
+   442→      if (refreshRes.ok) {
+   443→        const refreshData = await refreshRes.json()
+   444→        setUsers(refreshData.users || [])
+   445→      }
+   446→      setEditUser(null)
+   447→    } catch (error) {
+   448→      toast.error(error instanceof Error ? error.message : 'Lỗi')
+   449→    }
+   450→  }
+   451→
+   452→  return (
+   453→    <div>
+   454→      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+   455→        <div className="relative flex-1 max-w-xs">
+   456→          <Input
+   457→            placeholder="Tìm kiếm người dùng..."
+   458→            value={search}
+   459→            onChange={(e) => setSearch(e.target.value)}
+   460→          />
+   461→        </div>
+   462→        <Select value={roleFilter} onValueChange={setRoleFilter}>
+   463→          <SelectTrigger className="w-40">
+   464→            <SelectValue placeholder="Vai trò" />
+   465→          </SelectTrigger>
+   466→          <SelectContent>
+   467→            <SelectItem value="all">Tất cả</SelectItem>
+   468→            <SelectItem value="BUYER">Người mua</SelectItem>
+   469→            <SelectItem value="SELLER">Tiểu thương</SelectItem>
+   470→            <SelectItem value="SHIPPER">Shipper</SelectItem>
+   471→            <SelectItem value="ADMIN">Quản trị viên</SelectItem>
+   472→          </SelectContent>
+   473→        </Select>
+   474→      </div>
+   475→
+   476→      {loading ? (
+   477→        <div className="space-y-3">
+   478→          {Array.from({ length: 5 }).map((_, i) => (
+   479→            <Skeleton key={i} className="h-12 w-full" />
+   480→          ))}
+   481→        </div>
+   482→      ) : users.length === 0 ? (
+   483→        <div className="text-center py-16">
+   484→          <div className="text-5xl mb-4">👥</div>
+   485→          <h3 className="text-lg font-semibold mb-1">Không tìm thấy người dùng</h3>
+   486→          <p className="text-muted-foreground">Thử thay đổi bộ lọc</p>
+   487→        </div>
+   488→      ) : (
+   489→        <Card>
+   490→          <div className="overflow-x-auto">
+   491→            <Table>
+   492→              <TableHeader>
+   493→                <TableRow>
+   494→                  <TableHead>Tên</TableHead>
+   495→                  <TableHead>Email</TableHead>
+   496→                  <TableHead>Vai trò</TableHead>
+   497→                  <TableHead>Trạng thái</TableHead>
+   498→                  <TableHead>Đơn hàng</TableHead>
+   499→                  <TableHead className="text-right">Thao tác</TableHead>
+   500→                </TableRow>
+   501→              </TableHeader>
+   502→              <TableBody>
+   503→                {users.map((u) => (
+   504→                  <TableRow key={u.id} className="hover:bg-muted/30">
+   505→                    <TableCell className="font-medium">
+   506→                      <div className="flex items-center gap-2">
+   507→                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold">
+   508→                          {u.name.charAt(0).toUpperCase()}
+   509→                        </div>
+   510→                        {u.name}
+   511→                      </div>
+   512→                    </TableCell>
+   513→                    <TableCell className="text-sm">{u.email}</TableCell>
+   514→                    <TableCell>
+   515→                      <Badge className={`${getRoleColor(u.role)} text-xs`}>{getRoleLabel(u.role)}</Badge>
+   516→                    </TableCell>
+   517→                    <TableCell>
+   518→                      <Badge variant={u.isActive ? 'default' : 'destructive'} className="text-xs">
+   519→                        {u.isActive ? 'Hoạt động' : 'Khóa'}
+   520→                      </Badge>
+   521→                    </TableCell>
+   522→                    <TableCell>{u._count.orders}</TableCell>
+   523→                    <TableCell className="text-right">
+   524→                      <Button variant="ghost" size="sm" onClick={() => setEditUser(u)}>
+   525→                        <Shield className="h-4 w-4" />
+   526→                      </Button>
+   527→                    </TableCell>
+   528→                  </TableRow>
+   529→                ))}
+   530→              </TableBody>
+   531→            </Table>
+   532→          </div>
+   533→        </Card>
+   534→      )}
+   535→
+   536→      {/* Edit User Dialog */}
+   537→      <Dialog open={!!editUser} onOpenChange={(open) => { if (!open) setEditUser(null) }}>
+   538→        <DialogContent>
+   539→          <DialogHeader>
+   540→            <DialogTitle>Quản lý người dùng</DialogTitle>
+   541→          </DialogHeader>
+   542→          {editUser && (
+   543→            <EditUserForm user={editUser} onSave={handleUpdateUser} onClose={() => setEditUser(null)} />
+   544→          )}
+   545→        </DialogContent>
+   546→      </Dialog>
+   547→    </div>
+   548→  )
+   549→}
+   550→
+   551→function EditUserForm({ user, onSave, onClose }: { user: AdminUser; onSave: (id: string, data: { role?: string; isActive?: boolean }) => void; onClose: () => void }) {
+   552→  const [role, setRole] = useState(user.role)
+   553→  const [isActive, setIsActive] = useState(user.isActive)
+   554→  const [saving, setSaving] = useState(false)
+   555→
+   556→  const handleSubmit = async (e: React.FormEvent) => {
+   557→    e.preventDefault()
+   558→    setSaving(true)
+   559→    await onSave(user.id, { role, isActive })
+   560→    setSaving(false)
+   561→  }
+   562→
+   563→  return (
+   564→    <form onSubmit={handleSubmit} className="space-y-4">
+   565→      <div>
+   566→        <p className="font-medium">{user.name}</p>
+   567→        <p className="text-sm text-muted-foreground">{user.email}</p>
+   568→      </div>
+   569→      <div className="space-y-2">
+   570→        <Label>Vai trò</Label>
+   571→        <Select value={role} onValueChange={setRole}>
+   572→          <SelectTrigger><SelectValue /></SelectTrigger>
+   573→          <SelectContent>
+   574→            <SelectItem value="BUYER">Người mua</SelectItem>
+   575→            <SelectItem value="SELLER">Tiểu thương</SelectItem>
+   576→            <SelectItem value="SHIPPER">Shipper</SelectItem>
+   577→            <SelectItem value="ADMIN">Quản trị viên</SelectItem>
+   578→          </SelectContent>
+   579→        </Select>
+   580→      </div>
+   581→      <div className="flex items-center gap-2">
+   582→        <Switch checked={isActive} onCheckedChange={setIsActive} />
+   583→        <Label>{isActive ? 'Đang hoạt động' : 'Đã khóa'}</Label>
+   584→      </div>
+   585→      <div className="flex gap-2">
+   586→        <Button type="submit" className="flex-1" disabled={saving}>
+   587→          {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+   588→          Lưu
+   589→        </Button>
+   590→        <Button type="button" variant="outline" onClick={onClose}>Hủy</Button>
+   591→      </div>
+   592→    </form>
+   593→  )
+   594→}
+   595→
+   596→// ==================== SHOPS TAB ====================
+   597→function ShopsTab() {
+   598→  const [shops, setShops] = useState<AdminShop[]>([])
+   599→  const [loading, setLoading] = useState(true)
+   600→
+   601→  useEffect(() => {
+   602→    let cancelled = false
+   603→    const fetchShops = async () => {
+   604→      setLoading(true)
+   605→      try {
+   606→        const res = await fetch('/api/shops')
+   607→        if (res.ok && !cancelled) {
+   608→          const data = await res.json()
+   609→          setShops(data.shops || [])
+   610→        }
+   611→      } catch { /* ignore */ }
+   612→      if (!cancelled) setLoading(false)
+   613→    }
+   614→    fetchShops()
+   615→    return () => { cancelled = true }
+   616→  }, [])
+   617→
+   618→  if (loading) {
+   619→    return <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+   620→  }
+   621→
+   622→  return (
+   623→    <div>
+   624→      <h2 className="text-xl font-bold mb-4">Sạp hàng</h2>
+   625→      {shops.length === 0 ? (
+   626→        <div className="text-center py-16">
+   627→          <div className="text-5xl mb-4">🏪</div>
+   628→          <h3 className="text-lg font-semibold mb-1">Chưa có sạp hàng</h3>
+   629→        </div>
+   630→      ) : (
+   631→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   632→          {shops.map((shop) => (
+   633→            <Card key={shop.id} className="hover:shadow-md transition-shadow">
+   634→              <CardContent className="p-4">
+   635→                <div className="flex items-start gap-3">
+   636→                  <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center shrink-0 text-lg">
+   637→                    🏪
+   638→                  </div>
+   639→                  <div className="flex-1 min-w-0">
+   640→                    <h3 className="font-semibold truncate">{shop.name}</h3>
+   641→                    <p className="text-xs text-muted-foreground">{shop.address}</p>
+   642→                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+   643→                      <span>Chủ: {shop.owner.name}</span>
+   644→                      <span>{shop._count.products} SP</span>
+   645→                      <span>⭐ {shop.rating.toFixed(1)}</span>
+   646→                    </div>
+   647→                  </div>
+   648→                </div>
+   649→              </CardContent>
+   650→            </Card>
+   651→          ))}
+   652→        </div>
+   653→      )}
+   654→    </div>
+   655→  )
+   656→}
+   657→
+   658→// ==================== ORDERS TAB ====================
+   659→function OrdersTab() {
+   660→  const [orders, setOrders] = useState<AdminOrder[]>([])
+   661→  const [loading, setLoading] = useState(true)
+   662→  const [statusFilter, setStatusFilter] = useState('all')
+   663→
+   664→  useEffect(() => {
+   665→    let cancelled = false
+   666→    const fetchOrders = async () => {
+   667→      setLoading(true)
+   668→      try {
+   669→        const params = new URLSearchParams()
+   670→        if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
+   671→        const res = await fetch(`/api/orders?${params}`)
+   672→        if (res.ok && !cancelled) {
+   673→          const data = await res.json()
+   674→          setOrders(data.orders || [])
+   675→        }
+   676→      } catch { /* ignore */ }
+   677→      if (!cancelled) setLoading(false)
+   678→    }
+   679→    fetchOrders()
+   680→    return () => { cancelled = true }
+   681→  }, [statusFilter])
+   682→
+   683→  return (
+   684→    <div>
+   685→      <div className="flex items-center justify-between mb-4">
+   686→        <h2 className="text-xl font-bold">Đơn hàng</h2>
+   687→        <Select value={statusFilter} onValueChange={setStatusFilter}>
+   688→          <SelectTrigger className="w-44">
+   689→            <SelectValue placeholder="Lọc trạng thái" />
+   690→          </SelectTrigger>
+   691→          <SelectContent>
+   692→            <SelectItem value="all">Tất cả</SelectItem>
+   693→            <SelectItem value="PENDING">Chờ xác nhận</SelectItem>
+   694→            <SelectItem value="CONFIRMED">Đã xác nhận</SelectItem>
+   695→            <SelectItem value="PREPARING">Đang chuẩn bị</SelectItem>
+   696→            <SelectItem value="SHIPPING">Đang giao</SelectItem>
+   697→            <SelectItem value="DELIVERED">Đã giao</SelectItem>
+   698→            <SelectItem value="CANCELLED">Đã hủy</SelectItem>
+   699→          </SelectContent>
+   700→        </Select>
+   701→      </div>
+   702→
+   703→      {loading ? (
+   704→        <div className="space-y-4">
+   705→          {Array.from({ length: 3 }).map((_, i) => (
+   706→            <Card key={i}><CardContent className="p-4"><Skeleton className="h-24 w-full" /></CardContent></Card>
+   707→          ))}
+   708→        </div>
+   709→      ) : orders.length === 0 ? (
+   710→        <div className="text-center py-16">
+   711→          <div className="text-5xl mb-4">📦</div>
+   712→          <h3 className="text-lg font-semibold mb-1">Không có đơn hàng</h3>
+   713→          <p className="text-muted-foreground">Đơn hàng sẽ xuất hiện khi có người mua đặt hàng</p>
+   714→        </div>
+   715→      ) : (
+   716→        <div className="space-y-4">
+   717→          {orders.map((order) => (
+   718→            <Card key={order.id} className="hover:shadow-sm transition-shadow">
+   719→              <CardContent className="p-4">
+   720→                <div className="flex items-start justify-between mb-2">
+   721→                  <div>
+   722→                    <p className="font-semibold text-sm">Đơn #{order.id.slice(-8)}</p>
+   723→                    <p className="text-xs text-muted-foreground">{formatDateTime(order.createdAt)}</p>
+   724→                  </div>
+   725→                  <Badge className={`${getStatusColor(order.status)} text-xs`}>{getStatusLabel(order.status)}</Badge>
+   726→                </div>
+   727→                <div className="text-sm space-y-1">
+   728→                  <div className="flex justify-between">
+   729→                    <span className="text-muted-foreground">Khách hàng</span>
+   730→                    <span>{order.buyer.name}</span>
+   731→                  </div>
+   732→                  <div className="flex justify-between">
+   733→                    <span className="text-muted-foreground">Sạp hàng</span>
+   734→                    <span>{order.shop.name}</span>
+   735→                  </div>
+   736→                  <div className="flex justify-between">
+   737→                    <span className="text-muted-foreground">Thanh toán</span>
+   738→                    <span>{getPaymentStatusLabel(order.paymentStatus)}</span>
+   739→                  </div>
+   740→                  <div className="flex justify-between font-bold">
+   741→                    <span>Tổng</span>
+   742→                    <span className="text-green-700">{formatPrice(order.total + order.shippingFee)}</span>
+   743→                  </div>
+   744→                </div>
+   745→              </CardContent>
+   746→            </Card>
+   747→          ))}
+   748→        </div>
+   749→      )}
+   750→    </div>
+   751→  )
+   752→}
+   753→

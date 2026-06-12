@@ -1,0 +1,36 @@
+{
+  "success": true,
+  "query": "fresh meat fish Vietnamese market",
+  "count": 4,
+  "ranked": true,
+  "results": [
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/32c2ad0b51f0.jpg",
+      "caption": "A woman in a striped shirt sits behind a table of fresh fish at a market. The image contains watermarks and text.",
+      "source": "Alamy",
+      "original_width": "866px",
+      "original_height": "1390px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/a4553cfdd078.jpg",
+      "caption": "A woman in a conical hat carries a basket of fish on the street. The image contains watermarks and text: Made in OUTLET FACTORY, alamy, Image ID: P6TXMG, www.alamy.com.",
+      "source": "Alamy",
+      "original_width": "866px",
+      "original_height": "1390px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/792f935ad3dd.jpg",
+      "caption": "The image shows raw chicken fillets in baskets with repeating \"VNP\" watermarks at the bottom.",
+      "source": "vietnam.vnanet.vn",
+      "original_width": "1280px",
+      "original_height": "1920px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/9d1a0b415074.jpg",
+      "caption": "The image shows a busy open-air meat market with vendors and customers, featuring a watermark from Alamy.",
+      "source": "Alamy",
+      "original_width": "1300px",
+      "original_height": "953px"
+    }
+  ]
+}

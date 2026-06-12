@@ -1,0 +1,29 @@
+{
+  "success": true,
+  "query": "Vietnamese spices herbs market",
+  "count": 3,
+  "ranked": true,
+  "results": [
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/0cb057d51c18.jpg",
+      "caption": "Fifteen white square bowls containing various spices are arranged in a grid on a wooden surface. suitable for background image",
+      "source": "Bộ Công Thương",
+      "original_width": "1420px",
+      "original_height": "799px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/eb0424f225c0.jpg",
+      "caption": "A vibrant market stall displays various fresh produce like garlic, ginger, and limes in colorful plastic baskets. The image contains watermarks and a QR code. Text: alamy Image ID: 3DBKB62 www.alamy.com",
+      "source": "Alamy",
+      "original_width": "1300px",
+      "original_height": "1064px"
+    },
+    {
+      "original_url": "https://sfile.chatglm.cn/images-ppt/346737a6e92f.png",
+      "caption": "A rustic kitchen table displays a vibrant assortment of red and green chili peppers, garlic, limes, and fish sauce (nước mắm). suitable for background image",
+      "source": "note",
+      "original_width": "1920px",
+      "original_height": "1005px"
+    }
+  ]
+}
