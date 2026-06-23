@@ -3,7 +3,6 @@ import { setAuthCookie } from '@/lib/auth'
 import { rateLimiters } from '@/lib/rate-limit'
 import { loginSchema } from '@/modules/auth/schema'
 import { loginUser, ServiceError } from '@/modules/auth/service'
-import { z } from 'zod/v4'
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,8 +11,16 @@ export async function POST(request: NextRequest) {
     if (rateLimitResponse) return rateLimitResponse
 
     const body = await request.json()
-    const { email, password } = loginSchema.parse(body)
+    const parsed = loginSchema.safeParse(body)
+    if (!parsed.success) {
+      const firstIssue = parsed.error.issues?.[0]?.message || 'Dữ liệu không hợp lệ'
+      return NextResponse.json(
+        { error: firstIssue },
+        { status: 400 }
+      )
+    }
 
+    const { email, password } = parsed.data
     const user = await loginUser({ email, password })
 
     const { password: _, ...userWithoutPassword } = user
@@ -24,12 +31,6 @@ export async function POST(request: NextRequest) {
       { headers }
     )
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: error.issues[0].message },
-        { status: 400 }
-      )
-    }
     if (error instanceof ServiceError) {
       return NextResponse.json(
         { error: error.message },
@@ -37,8 +38,9 @@ export async function POST(request: NextRequest) {
       )
     }
     console.error('[Login API Error]:', error)
+    const message = error instanceof Error ? error.message : 'Lỗi server'
     return NextResponse.json(
-      { error: 'Lỗi server' },
+      { error: message },
       { status: 500 }
     )
   }
