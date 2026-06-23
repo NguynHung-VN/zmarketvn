@@ -1,9 +1,4 @@
-// ─── Production Schema (PostgreSQL) for Vercel Deployment ──────────────────
-// This is the PostgreSQL version of the schema for use on Vercel.
-// Before deploying to Vercel, this file replaces prisma/schema.prisma.
-//
-// Usage: cp prisma/schema.production.prisma prisma/schema.prisma
-// Then set DATABASE_URL to your PostgreSQL connection string.
+// prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -14,240 +9,409 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  password  String
-  phone     String?
-  avatar    String?
-  role      String   @default("BUYER")
-  address   String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ─── ENUMS ────────────────────────────────────────────────
 
-  shop     Shop?
-  orders   Order[]
-  cartItems CartItem[]
-  reviews  Review[]
-  wishlistItems WishlistItem[]
-  deliveries Order[] @relation("ShipperDeliveries")
-  conversations Participant[]
-  messages Message[]
-  feedbacks Feedback[] @relation("UserFeedbacks")
-  repliedFeedbacks Feedback[] @relation("AdminReplies")
-
-  @@map("users")
+enum Role {
+  BUYER
+  SELLER
+  SHIPPER
+  ADMIN
 }
+
+enum OrderStatus {
+  PENDING        // chờ xác nhận
+  CONFIRMED      // đã xác nhận
+  PREPARING      // đang chuẩn bị
+  READY          // sẵn sàng giao
+  SHIPPING       // đang giao
+  DELIVERING     // đang giao (để tương thích cả hai)
+  DELIVERED      // đã giao
+  CANCELLED      // đã huỷ
+  RETURNED       // hoàn hàng
+}
+
+enum PaymentMethod {
+  COD
+  VNPAY
+  MOMO
+  STRIPE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  EXPIRED
+}
+
+enum StockReason {
+  IMPORT     // nhập kho
+  SALE       // bán hàng (trừ kho)
+  ADJUST     // điều chỉnh thủ công
+  RETURN     // hoàn hàng (cộng lại)
+  CANCEL     // huỷ đơn (cộng lại)
+}
+
+enum DeliveryStatus {
+  ASSIGNED     // shipper đã nhận
+  PICKED_UP    // đã lấy hàng
+  IN_TRANSIT   // đang giao
+  DELIVERED    // giao thành công
+  FAILED       // giao thất bại
+  RETURNED     // trả hàng
+}
+
+// ─── USER & AUTH ──────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String?                  // null nếu đăng nhập qua OAuth
+  name          String
+  phone         String?
+  avatar        String?
+  role          Role      @default(BUYER)
+  address       String?
+  isActive      Boolean   @default(true)
+  googleId      String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  shop          Shop?
+  cart          Cart?
+  orders        Order[]   @relation("BuyerOrders")
+  shipperOrders Order[]   @relation("ShipperOrders")
+  reviews       Review[]
+  wishlist      Wishlist[]
+  conversations Conversation[]
+  messages      Message[]
+  deliveries    Delivery[]
+  feedbacks     Feedback[] @relation("UserFeedbacks")
+  adminReplies  Feedback[] @relation("AdminReplies")
+  stockMovements StockMovement[]
+
+  @@index([role])
+  @@index([isActive])
+}
+
+// ─── SHOP (SẠP HÀNG) ──────────────────────────────────────
 
 model Shop {
   id          String   @id @default(cuid())
   name        String
   description String?
   image       String?
-  address     String
+  bannerImage String?
+  address     String?
   phone       String?
   rating      Float    @default(0)
+  reviewCount Int      @default(0)
   isActive    Boolean  @default(true)
+  openHours   String?                  // "6:00 - 18:00"
   ownerId     String   @unique
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  products    Product[]
+  orders      Order[]
+  conversations Conversation[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  owner    User      @relation(fields: [ownerId], references: [id])
-  products Product[]
-  orders   Order[]
-
-  @@map("shops")
+  @@index([isActive])
 }
+
+// ─── CATEGORY ─────────────────────────────────────────────
 
 model Category {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
   icon      String?
-  slug      String   @unique
-  createdAt DateTime @default(now())
-
-  products Product[]
-
-  @@map("categories")
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  products  Product[]
 }
 
+// ─── PRODUCT ──────────────────────────────────────────────
+
 model Product {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  price       Float
-  originalPrice Float?
-  image       String?
-  unit        String   @default("kg")
-  inStock     Boolean  @default(true)
-  rating      Float    @default(0)
-  soldCount   Int      @default(0)
-  shopId      String
-  categoryId  String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                String   @id @default(cuid())
+  name              String
+  description       String?
+  longDescription   String?                  // mô tả dài (markdown/html)
+  price             Int                       // giá bán (VND, số nguyên)
+  originalPrice     Int?                      // giá gốc (nếu có KM)
+  unit              String   @default("cái") // kg, bó, trái, hộp...
+  stockQuantity     Int      @default(0)
+  lowStockThreshold Int      @default(5)
+  sku               String?  @unique
+  images            String[]                  // nhiều ảnh, [0] = ảnh bìa
+  image             String?                   // ảnh bìa chính (tương thích ngược)
+  weightGram        Int?                      // trọng lượng để tính phí ship
+  origin            String?                   // xuất xứ
+  storageInfo       String?                   // bảo quản / hạn sử dụng
+  isActive          Boolean  @default(true)   // bật/tắt bán
+  inStock           Boolean  @default(true)
+  rating            Float    @default(0)
+  reviewCount       Int      @default(0)
+  soldCount         Int      @default(0)
+  shopId            String
+  categoryId        String
+  shop              Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  category          Category @relation(fields: [categoryId], references: [id])
+  variants          ProductVariant[]
+  orderItems        OrderItem[]
+  reviews           Review[]
+  stockMovements    StockMovement[]
+  wishlistItems     Wishlist[]
+  cartItems         CartItem[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  shop      Shop      @relation(fields: [shopId], references: [id])
-  category  Category  @relation(fields: [categoryId], references: [id])
-  cartItems CartItem[]
-  orderItems OrderItem[]
-  reviews   Review[]
-  wishlistItems WishlistItem[]
-  images ProductImage[]
+  @@index([shopId])
+  @@index([categoryId])
+  @@index([isActive])
+  @@index([stockQuantity])
+}
 
-  @@map("products")
+// ─── PRODUCT VARIANT (phân loại: 0.5kg / 1kg / Loại 1...) ─
+
+model ProductVariant {
+  id            String  @id @default(cuid())
+  productId     String
+  name          String                  // "1kg", "Loại 1", "Hộp 500g"
+  price         Int                      // giá theo biến thể (VND)
+  stockQuantity Int     @default(0)
+  sku           String?
+  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems    OrderItem[]
+  cartItems     CartItem[]
+
+  @@index([productId])
+}
+
+// ─── STOCK MOVEMENT (nhật ký xuất/nhập kho) ───────────────
+
+model StockMovement {
+  id        String      @id @default(cuid())
+  productId String
+  variantId String?                      // null nếu là sản phẩm chính
+  delta     Int                       // +nhập, -bán/-huỷ
+  reason    StockReason
+  note      String?                     // ghi chú
+  orderId   String?
+  userId    String?                     // ai thực hiện
+  product   Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User?       @relation(fields: [userId], references: [id])
+  createdAt DateTime    @default(now())
+
+  @@index([productId])
+  @@index([reason])
+  @@index([createdAt])
+}
+
+// ─── CART ─────────────────────────────────────────────────
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 }
 
 model CartItem {
-  id        String   @id @default(cuid())
-  quantity  Int      @default(1)
-  userId    String
-  productId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String  @id @default(cuid())
+  cartId     String
+  productId  String
+  variantId  String?
+  quantity   Int
+  cart       Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product    Product @relation(fields: [productId], references: [id])
+  variant    ProductVariant? @relation(fields: [variantId], references: [id])
+  createdAt  DateTime @default(now())
 
-  user    User    @relation(fields: [userId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
-
-  @@map("cart_items")
+  @@unique([cartId, productId, variantId])
 }
 
+// ─── ORDER ────────────────────────────────────────────────
+
 model Order {
-  id            String   @id @default(cuid())
-  status        String   @default("PENDING")
-  total         Float
-  shippingFee   Float    @default(0)
-  address       String
-  phone         String
-  note          String?
-  paymentMethod String   @default("COD")
-  paymentStatus String   @default("UNPAID")
-  buyerId       String
-  shopId        String
-  shipperId     String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String        @id @default(cuid())
+  orderCode       String        @unique         // mã hiển thị: #bzf67w81
+  userId          String
+  shopId          String
+  shipperId       String?
+  status          OrderStatus   @default(PENDING)
+  // ── TIỀN (server-side, không tin client) ──
+  subtotal        Int                            // tổng tiền hàng
+  shippingFee     Int           @default(0)     // phí giao hàng
+  discount        Int           @default(0)     // giảm giá
+  total           Int                            // subtotal + shippingFee - discount
+  // ── THANH TOÁN ──
+  paymentMethod   PaymentMethod @default(COD)
+  paymentStatus   PaymentStatus @default(PENDING)
+  // ── GIAO HÀNG ──
+  shippingName    String
+  shippingPhone   String
+  shippingAddress String
+  note            String?
+  scheduledTime   DateTime?                      // thời gian giao giao hẹn
+  // ── META ──
+  buyer           User          @relation("BuyerOrders", fields: [userId], references: [id])
+  shop            Shop          @relation(fields: [shopId], references: [id])
+  shipper         User?         @relation("ShipperOrders", fields: [shipperId], references: [id])
+  items           OrderItem[]
+  payment         Payment?
+  delivery        Delivery?
+  review          Review?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
-  buyer    User       @relation(fields: [buyerId], references: [id])
-  shop     Shop       @relation(fields: [shopId], references: [id])
-  shipper  User?      @relation("ShipperDeliveries", fields: [shipperId], references: [id])
-  items    OrderItem[]
-
-  @@map("orders")
+  @@index([userId])
+  @@index([shopId])
+  @@index([shipperId])
+  @@index([status])
+  @@index([paymentStatus])
 }
 
 model OrderItem {
-  id        String @id @default(cuid())
-  quantity  Int
-  price     Float
-  orderId   String
-  productId String
+  id          String  @id @default(cuid())
+  orderId     String
+  productId   String
+  variantId   String?
+  productName String                  // snapshot tên lúc đặt
+  unit        String                  // snapshot đơn vị
+  price       Int                     // snapshot giá (VND)
+  quantity    Int
+  subtotal    Int                     // price * quantity
+  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product @relation(fields: [productId], references: [id])
+  variant     ProductVariant? @relation(fields: [variantId], references: [id])
 
-  order   Order   @relation(fields: [orderId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
-
-  @@map("order_items")
+  @@index([orderId])
 }
+
+// ─── PAYMENT ──────────────────────────────────────────────
+
+model Payment {
+  id              String        @id @default(cuid())
+  orderId         String        @unique
+  provider        PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  amount          Int                          // số tiền (VND)
+  txnRef          String        @unique        // mã giao dịch nội bộ
+  providerTxnId   String?                      // mã từ VNPay/MoMo
+  payUrl          String?                      // URL thanh toán
+  webhookCount    Int           @default(0)    // số lần nhận webhook (idempotency)
+  paidAt          DateTime?
+  rawData         String?                      // log raw callback (debug)
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([status])
+  @@index([txnRef])
+}
+
+// ─── DELIVERY (giao hàng) ─────────────────────────────────
+
+model Delivery {
+  id           String          @id @default(cuid())
+  orderId      String          @unique
+  shipperId    String?
+  status       DeliveryStatus  @default(ASSIGNED)
+  pickupTime   DateTime?
+  deliverTime  DateTime?
+  proofImage   String?                        // ảnh bằng chứng giao
+  failReason   String?                        // lý do giao thất bại
+  order        Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  shipper      User?           @relation(fields: [shipperId], references: [id])
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([shipperId])
+  @@index([status])
+}
+
+// ─── REVIEW (đánh giá) ────────────────────────────────────
 
 model Review {
   id        String   @id @default(cuid())
-  rating    Int
-  comment   String?
-  userId    String
   productId String
+  orderId   String   @unique                  // 1 đơn 1 review/sp
+  userId    String
+  rating    Int                                // 1..5
+  comment   String?
+  images    String[]
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
 
-  user    User    @relation(fields: [userId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
-
-  @@map("reviews")
+  @@index([productId])
+  @@index([userId])
 }
 
-model WishlistItem {
-  id        String   @id @default(cuid())
+// ─── WISHLIST (yêu thích) ─────────────────────────────────
+
+model Wishlist {
+  id        String  @id @default(cuid())
   userId    String
   productId String
-  createdAt DateTime @default(now())
-
-  user    User    @relation(fields: [userId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
-  @@map("wishlist_items")
 }
+
+// ─── CHAT ─────────────────────────────────────────────────
 
 model Conversation {
-  id        String   @id @default(cuid())
-  type      String
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String    @id @default(cuid())
+  userId    String                     // buyer
+  shopId    String                     // seller's shop
+  user      User      @relation(fields: [userId], references: [id])
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  messages  Message[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  participants Participant[]
-  messages     Message[]
-
-  @@map("conversations")
-}
-
-model Participant {
-  id             String    @id @default(cuid())
-  conversationId String
-  userId         String
-  lastReadAt     DateTime?
-  createdAt      DateTime  @default(now())
-
-  conversation Conversation @relation(fields: [conversationId], references: [id])
-  user        User         @relation(fields: [userId], references: [id])
-
-  @@unique([conversationId, userId])
-  @@map("participants")
+  @@unique([userId, shopId])
 }
 
 model Message {
-  id             String   @id @default(cuid())
-  content        String
-  type           String   @default("TEXT")
-  imageUrl       String?
-  conversationId String
-  senderId       String
-  isRead         Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  id              String       @id @default(cuid())
+  conversationId  String
+  senderId        String
+  content         String
+  imageUrl        String?
+  isRead          Boolean      @default(false)
+  sender          User         @relation(fields: [senderId], references: [id])
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
 
-  conversation Conversation @relation(fields: [conversationId], references: [id])
-  sender      User         @relation(fields: [senderId], references: [id])
-
-  @@map("messages")
+  @@index([conversationId])
+  @@index([senderId])
 }
+
+// ─── FEEDBACK (phản hồi/khiếu nại) ────────────────────────
 
 model Feedback {
   id         String   @id @default(cuid())
+  userId     String
   subject    String
   content    String
   type       String   @default("FEEDBACK")
-  status     String   @default("PENDING")
+  status     String   @default("PENDING") // PENDING, RESOLVED, CLOSED
   priority   String   @default("MEDIUM")
-  userId     String
   adminReply String?
   repliedBy  String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  user    User  @relation("UserFeedbacks", fields: [userId], references: [id])
-  replier User? @relation("AdminReplies", fields: [repliedBy], references: [id])
+  user       User     @relation("UserFeedbacks", fields: [userId], references: [id])
+  replier    User?    @relation("AdminReplies", fields: [repliedBy], references: [id])
 
-  @@map("feedbacks")
-}
-
-model ProductImage {
-  id        String   @id @default(cuid())
-  url       String
-  productId String
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
-
-  product Product @relation(fields: [productId], references: [id])
-
-  @@map("product_images")
+  @@index([status])
 }
