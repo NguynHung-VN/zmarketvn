@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const user = await requireAuth()
 
-    const wishlistItems = await db.wishlistItem.findMany({
+    const wishlistItems = await db.wishlist.findMany({
       where: { userId: user.id },
       include: {
         product: {
@@ -21,7 +21,7 @@ export async function GET() {
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { id: 'desc' },
     })
 
     return NextResponse.json({ wishlistItems })
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if already in wishlist
-    const existing = await db.wishlistItem.findUnique({
+    const existing = await db.wishlist.findUnique({
       where: {
         userId_productId: { userId: user.id, productId },
       },
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const wishlistItem = await db.wishlistItem.create({
+    const wishlistItem = await db.wishlist.create({
       data: {
         userId: user.id,
         productId,

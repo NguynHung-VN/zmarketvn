@@ -20,10 +20,14 @@ import { toast } from 'sonner'
 import {
   LayoutDashboard, Package, ClipboardList, Store,
   Plus, Edit, Trash2, Loader2, DollarSign, ShoppingBag,
-  MessageCircle, MessageSquareWarning, ImagePlus, X as XIcon
+  MessageCircle, MessageSquareWarning, ImagePlus, X as XIcon, User, Settings
 } from 'lucide-react'
 import ChatPanel from './ChatPanel'
 import FeedbackPanel from './FeedbackPanel'
+import ProfileTab from './ProfileTab'
+import SettingsTab from './SettingsTab'
+import UserHeaderMenu from './UserHeaderMenu'
+import { translations } from '@/lib/translations'
 
 interface SellerProduct {
   id: string
@@ -39,6 +43,15 @@ interface SellerProduct {
   categoryId: string
   category: { id: string; name: string; slug: string }
   _count: { orderItems: number; reviews: number }
+  stockQuantity: number
+  lowStockThreshold: number
+  sku?: string | null
+  weightGram?: number | null
+  longDescription?: string | null
+  origin?: string | null
+  storageInfo?: string | null
+  isActive: boolean
+  variants?: { id: string; name: string; price: number; stockQuantity: number; sku?: string | null }[]
 }
 
 interface Category {
@@ -50,6 +63,7 @@ interface Category {
 interface SellerOrder {
   id: string
   status: string
+  subtotal: number
   total: number
   shippingFee: number
   address: string
@@ -77,22 +91,27 @@ interface ShopInfo {
   rating: number
 }
 
-const sellerTabs = [
-  { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
-  { id: 'products', label: 'Sản phẩm', icon: Package },
-  { id: 'orders', label: 'Đơn hàng', icon: ClipboardList },
-  { id: 'shop', label: 'Sạp hàng', icon: Store },
-  { id: 'chat', label: 'Nhắn tin', icon: MessageCircle },
-  { id: 'feedback', label: 'Phản hồi', icon: MessageSquareWarning },
-]
+// sellerTabs is now defined dynamically inside the SellerDashboard component using translation keys
 
 export default function SellerDashboard() {
-  const { user, currentTab, setTab } = useAppStore()
+  const { user, currentTab, setTab, language, setLanguage } = useAppStore()
   const activeTab = currentTab || 'overview'
+  const t = translations[language]
 
   const handleTabChange = (tab: string) => {
     setTab(tab)
   }
+
+  const sellerTabs = [
+    { id: 'overview', label: language === 'vi' ? 'Tổng quan' : 'Overview', icon: LayoutDashboard },
+    { id: 'products', label: t.products, icon: Package },
+    { id: 'orders', label: t.orders, icon: ClipboardList },
+    { id: 'shop', label: t.shops, icon: Store },
+    { id: 'chat', label: t.chat, icon: MessageCircle },
+    { id: 'feedback', label: t.feedback, icon: MessageSquareWarning },
+    { id: 'settings', label: t.settings, icon: Settings },
+    { id: 'profile', label: t.profile, icon: User },
+  ]
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
@@ -101,13 +120,30 @@ export default function SellerDashboard() {
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-black text-green-700">Z-MARKET</h1>
-            <Badge variant="secondary" className="bg-amber-100 text-amber-700">Tiểu thương</Badge>
+            <Badge variant="secondary" className="bg-amber-100 text-amber-700">{t.role_seller}</Badge>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground hidden sm:block">{user?.name}</span>
-            <Button variant="ghost" size="sm" onClick={() => useAppStore.getState().logout()}>
-              Đăng xuất
-            </Button>
+            {/* Language Switcher */}
+            <div className="flex items-center gap-1 bg-muted rounded-full p-0.5 border">
+              <button
+                onClick={() => setLanguage('vi')}
+                className={`px-2 py-0.5 rounded-full text-xs font-bold transition-all ${
+                  language === 'vi' ? 'bg-white text-green-800 shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                VI
+              </button>
+              <button
+                onClick={() => setLanguage('en')}
+                className={`px-2 py-0.5 rounded-full text-xs font-bold transition-all ${
+                  language === 'en' ? 'bg-white text-green-800 shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                EN
+              </button>
+            </div>
+
+            <UserHeaderMenu />
           </div>
         </div>
       </header>
@@ -161,13 +197,15 @@ export default function SellerDashboard() {
             {activeTab === 'shop' && <ShopTab />}
             {activeTab === 'chat' && user && <ChatPanel userId={user.id} userName={user.name} />}
             {activeTab === 'feedback' && user && <FeedbackPanel userId={user.id} userRole={user.role} />}
+            {activeTab === 'settings' && <SettingsTab />}
+            {activeTab === 'profile' && <ProfileTab />}
           </div>
         </main>
       </div>
 
       <footer className="bg-gray-900 text-gray-400 mt-auto">
         <div className="max-w-6xl mx-auto px-4 py-4 text-center text-sm">
-          © 2024 Z-Market — Chợ Số Việt Nam
+          © Z-Market — Chợ Số Việt Nam
         </div>
       </footer>
 
@@ -214,7 +252,7 @@ function OverviewTab() {
     return () => { cancelled = true }
   }, [])
 
-  const totalRevenue = orders.filter(o => o.status === 'DELIVERED').reduce((sum, o) => sum + o.total, 0)
+  const totalRevenue = orders.filter(o => o.status === 'DELIVERED' || o.paymentStatus === 'PAID').reduce((sum, o) => sum + o.total, 0)
   const pendingOrders = orders.filter(o => o.status === 'PENDING').length
 
   if (loading) {
@@ -359,20 +397,27 @@ function ProductsTab() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold">Sản phẩm</h2>
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogTrigger asChild>
-            <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Thêm sản phẩm</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Thêm sản phẩm mới</DialogTitle>
-            </DialogHeader>
-            <ProductForm
-              categories={categories}
-              onSuccess={() => { setShowAddDialog(false); refresh() }}
-            />
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" asChild>
+            <a href="/seller/kho" className="flex items-center gap-1">
+              <Package className="h-4 w-4" /> Quản lý kho
+            </a>
+          </Button>
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogTrigger asChild>
+              <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Thêm sản phẩm</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Thêm sản phẩm mới</DialogTitle>
+              </DialogHeader>
+              <ProductForm
+                categories={categories}
+                onSuccess={() => { setShowAddDialog(false); refresh() }}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {loading ? (
@@ -415,9 +460,24 @@ function ProductsTab() {
                     <TableCell>{product.category.name}</TableCell>
                     <TableCell>{formatPrice(product.price)}</TableCell>
                     <TableCell>
-                      <Badge variant={product.inStock ? 'default' : 'destructive'} className="text-xs">
-                        {product.inStock ? 'Còn hàng' : 'Hết hàng'}
-                      </Badge>
+                      <div className="flex flex-col gap-1">
+                        <span className="font-semibold text-sm">
+                          {product.stockQuantity} {product.unit}
+                        </span>
+                        {product.stockQuantity === 0 ? (
+                          <Badge variant="destructive" className="w-max text-xs bg-red-100 text-red-700 hover:bg-red-200 border-none">
+                            Hết hàng
+                          </Badge>
+                        ) : product.stockQuantity <= product.lowStockThreshold ? (
+                          <Badge className="w-max text-xs bg-amber-100 text-amber-700 hover:bg-amber-200 border-none">
+                            Sắp hết
+                          </Badge>
+                        ) : (
+                          <Badge className="w-max text-xs bg-green-100 text-green-700 hover:bg-green-200 border-none">
+                            Còn hàng
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>{product.soldCount}</TableCell>
                     <TableCell className="text-right">
@@ -470,11 +530,20 @@ function ProductForm({ product, categories, onSuccess }: {
   const [unit, setUnit] = useState(product?.unit || 'kg')
   const [categoryId, setCategoryId] = useState(product?.categoryId || '')
   const [inStock, setInStock] = useState(product?.inStock ?? true)
+  const [stockQuantity, setStockQuantity] = useState(product?.stockQuantity?.toString() || '0')
+  const [lowStockThreshold, setLowStockThreshold] = useState(product?.lowStockThreshold?.toString() || '5')
+  const [sku, setSku] = useState(product?.sku || '')
+  const [weightGram, setWeightGram] = useState(product?.weightGram?.toString() || '')
+  const [longDescription, setLongDescription] = useState(product?.longDescription || '')
+  const [origin, setOrigin] = useState(product?.origin || '')
+  const [storageInfo, setStorageInfo] = useState(product?.storageInfo || '')
+  const [isActive, setIsActive] = useState(product?.isActive ?? true)
+  const [variants, setVariants] = useState<{ id?: string; name: string; price: string; stockQuantity: string; sku?: string }[]>([])
   const [saving, setSaving] = useState(false)
   const [productImages, setProductImages] = useState<string[]>([])
   const [uploadingImage, setUploadingImage] = useState(false)
 
-  // Load existing images when editing
+  // Load existing images and full details when editing
   useEffect(() => {
     if (product?.id) {
       fetch(`/api/seller/products/${product.id}/images`)
@@ -482,6 +551,27 @@ function ProductForm({ product, categories, onSuccess }: {
         .then(data => {
           if (data.images) {
             setProductImages(data.images.map((img: { url: string }) => img.url))
+          }
+        })
+        .catch(() => { /* ignore */ })
+
+      fetch(`/api/products/${product.id}`)
+        .then(res => res.ok ? res.json() : { product: null })
+        .then(data => {
+          if (data.product) {
+            if (data.product.longDescription) setLongDescription(data.product.longDescription)
+            if (data.product.origin) setOrigin(data.product.origin)
+            if (data.product.storageInfo) setStorageInfo(data.product.storageInfo)
+            setIsActive(data.product.isActive ?? true)
+            if (data.product.variants) {
+              setVariants(data.product.variants.map((v: any) => ({
+                id: v.id,
+                name: v.name,
+                price: v.price.toString(),
+                stockQuantity: v.stockQuantity.toString(),
+                sku: v.sku || ''
+              })))
+            }
           }
         })
         .catch(() => { /* ignore */ })
@@ -522,11 +612,27 @@ function ProductForm({ product, categories, onSuccess }: {
       const body = {
         name,
         description: description || undefined,
+        longDescription: longDescription || undefined,
         price: parseFloat(price),
         originalPrice: originalPrice ? parseFloat(originalPrice) : undefined,
         unit,
         categoryId,
         inStock,
+        stockQuantity: parseInt(stockQuantity, 10) || 0,
+        lowStockThreshold: parseInt(lowStockThreshold, 10) || 5,
+        sku: sku || undefined,
+        weightGram: weightGram ? parseInt(weightGram, 10) : undefined,
+        origin: origin || undefined,
+        storageInfo: storageInfo || undefined,
+        isActive,
+        images: productImages,
+        variants: variants.map(v => ({
+          id: v.id,
+          name: v.name,
+          price: parseFloat(v.price) || 0,
+          stockQuantity: parseInt(v.stockQuantity, 10) || 0,
+          sku: v.sku || undefined
+        }))
       }
       const url = product ? `/api/seller/products/${product.id}` : '/api/seller/products'
       const method = product ? 'PUT' : 'POST'
@@ -537,19 +643,6 @@ function ProductForm({ product, categories, onSuccess }: {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Lỗi')
-
-      // Save product images
-      const productId = data.product?.id || data.id || product?.id
-      if (productId && productImages.length > 0) {
-        // Save each image to ProductImage table
-        for (let i = 0; i < productImages.length; i++) {
-          await csrfFetch(`/api/seller/products/${productId}/images`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: productImages[i], order: i + 1 }),
-          })
-        }
-      }
 
       toast.success(product ? 'Đã cập nhật sản phẩm' : 'Đã tạo sản phẩm')
       onSuccess()
@@ -566,8 +659,12 @@ function ProductForm({ product, categories, onSuccess }: {
         <Input value={name} onChange={(e) => setName(e.target.value)} required />
       </div>
       <div className="space-y-2">
-        <Label>Mô tả</Label>
+        <Label>Mô tả ngắn</Label>
         <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+      </div>
+      <div className="space-y-2">
+        <Label>Mô tả chi tiết (Markdown)</Label>
+        <Textarea value={longDescription} onChange={(e) => setLongDescription(e.target.value)} rows={4} placeholder="Mô tả chi tiết về sản phẩm, cách chế biến, dinh dưỡng..." />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
@@ -596,9 +693,141 @@ function ProductForm({ product, categories, onSuccess }: {
           </Select>
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <Switch checked={inStock} onCheckedChange={setInStock} />
-        <Label>Còn hàng</Label>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label>Số lượng tồn kho *</Label>
+          <Input type="number" value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} required min="0" />
+        </div>
+        <div className="space-y-2">
+          <Label>Ngưỡng cảnh báo hết hàng *</Label>
+          <Input type="number" value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} required min="0" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label>Mã sản phẩm (SKU)</Label>
+          <Input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="VD: CAM-SANH-01" />
+        </div>
+        <div className="space-y-2">
+          <Label>Trọng lượng (Gram)</Label>
+          <Input type="number" value={weightGram} onChange={(e) => setWeightGram(e.target.value)} placeholder="VD: 500" min="1" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label>Xuất xứ</Label>
+          <Input value={origin} onChange={(e) => setOrigin(e.target.value)} placeholder="VD: Đà Lạt, Việt Nam" />
+        </div>
+        <div className="space-y-2">
+          <Label>Hướng dẫn bảo quản</Label>
+          <Input value={storageInfo} onChange={(e) => setStorageInfo(e.target.value)} placeholder="VD: Ngăn mát tủ lạnh 2-5°C" />
+        </div>
+      </div>
+
+      {/* Dynamic Variants Editor */}
+      <div className="space-y-2 border-t pt-4">
+        <div className="flex items-center justify-between mb-2">
+          <Label className="font-bold text-sm text-green-700">Biến thể / Phân loại sản phẩm</Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setVariants(prev => [...prev, { name: '', price: price || '0', stockQuantity: '0', sku: '' }])}
+          >
+            + Thêm phân loại
+          </Button>
+        </div>
+        {variants.length > 0 && (
+          <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+            {variants.map((v, i) => (
+              <div key={i} className="flex flex-col gap-2 p-3 bg-muted/40 rounded-lg border">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-xs text-muted-foreground">Phân loại #{i + 1}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-6 px-2 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => setVariants(prev => prev.filter((_, idx) => idx !== i))}
+                  >
+                    Xoá
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">Tên phân loại</Label>
+                    <Input
+                      value={v.name}
+                      onChange={(e) => {
+                        const newVariants = [...variants]
+                        newVariants[i].name = e.target.value
+                        setVariants(newVariants)
+                      }}
+                      required
+                      placeholder="VD: Bó 500g"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Giá bán (VND)</Label>
+                    <Input
+                      type="number"
+                      value={v.price}
+                      onChange={(e) => {
+                        const newVariants = [...variants]
+                        newVariants[i].price = e.target.value
+                        setVariants(newVariants)
+                      }}
+                      required
+                      className="h-8 text-xs"
+                      min="0"
+                      step="1000"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">Tồn kho</Label>
+                    <Input
+                      type="number"
+                      value={v.stockQuantity}
+                      onChange={(e) => {
+                        const newVariants = [...variants]
+                        newVariants[i].stockQuantity = e.target.value
+                        setVariants(newVariants)
+                      }}
+                      required
+                      className="h-8 text-xs"
+                      min="0"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Mã SKU</Label>
+                    <Input
+                      value={v.sku}
+                      onChange={(e) => {
+                        const newVariants = [...variants]
+                        newVariants[i].sku = e.target.value
+                        setVariants(newVariants)
+                      }}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-4 border-t pt-2">
+        <div className="flex items-center gap-2">
+          <Switch checked={inStock} onCheckedChange={setInStock} />
+          <Label>Còn hàng</Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch checked={isActive} onCheckedChange={setIsActive} />
+          <Label>Cho phép hiển thị/bán</Label>
+        </div>
       </div>
 
       {/* Image Upload Section */}
@@ -751,9 +980,18 @@ function OrdersTab() {
                     </div>
                   ))}
                   <Separator className="my-1" />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Tiền hàng:</span>
+                    <span>{formatPrice(order.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Phí ship:</span>
+                    <span>{formatPrice(order.shippingFee)}</span>
+                  </div>
+                  <Separator className="my-1" />
                   <div className="flex justify-between font-bold">
-                    <span>Tổng</span>
-                    <span className="text-green-700">{formatPrice(order.total + order.shippingFee)}</span>
+                    <span>Tổng:</span>
+                    <span className="text-green-700">{formatPrice(order.total)}</span>
                   </div>
                 </div>
 

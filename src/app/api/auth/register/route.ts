@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { hashPassword, setAuthCookie } from '@/lib/auth'
+import { setAuthCookie } from '@/lib/auth'
 import { rateLimiters } from '@/lib/rate-limit'
+import { registerSchema } from '@/modules/auth/schema'
+import { registerUser, ServiceError } from '@/modules/auth/service'
 import { z } from 'zod/v4'
-
-const registerSchema = z.object({
-  name: z.string().min(2, 'Tên phải có ít nhất 2 ký tự').max(100, 'Tên quá dài'),
-  email: z.string().email('Email không hợp lệ').max(200, 'Email quá dài'),
-  password: z.string().min(6, 'Mật khẩu phải có ít nhất 6 ký tự').max(128, 'Mật khẩu quá dài'),
-  phone: z.string().max(20, 'Số điện thoại quá dài').optional(),
-  address: z.string().max(500, 'Địa chỉ quá dài').optional(),
-})
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,30 +14,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const data = registerSchema.parse(body)
 
-    // Check if email already exists
-    const existing = await db.user.findUnique({ where: { email: data.email } })
-    if (existing) {
-      return NextResponse.json(
-        { error: 'Email đã được sử dụng' },
-        { status: 409 }
-      )
-    }
-
-    const hashedPassword = await hashPassword(data.password)
-
-    const user = await db.user.create({
-      data: {
-        name: data.name,
-        email: data.email,
-        password: hashedPassword,
-        phone: data.phone,
-        address: data.address,
-        role: 'BUYER',
-      },
-    })
+    const user = await registerUser(data)
 
     const { password: _, ...userWithoutPassword } = user
-    const headers = setAuthCookie(user.id)
+    const headers = await setAuthCookie(user.id)
 
     return NextResponse.json(
       { user: userWithoutPassword, message: 'Đăng ký thành công' },
@@ -55,6 +28,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: error.issues[0].message },
         { status: 400 }
+      )
+    }
+    if (error instanceof ServiceError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.statusCode }
       )
     }
     return NextResponse.json(

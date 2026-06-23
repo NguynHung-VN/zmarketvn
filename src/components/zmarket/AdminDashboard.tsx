@@ -18,10 +18,14 @@ import { toast } from 'sonner'
 import {
   LayoutDashboard, Users, Store, ClipboardList,
   Package, DollarSign, Loader2, Shield, TrendingUp,
-  MessageCircle, MessageSquareWarning
+  MessageCircle, MessageSquareWarning, User, Settings
 } from 'lucide-react'
 import ChatPanel from './ChatPanel'
 import FeedbackPanel from './FeedbackPanel'
+import ProfileTab from './ProfileTab'
+import SettingsTab from './SettingsTab'
+import UserHeaderMenu from './UserHeaderMenu'
+import { translations } from '@/lib/translations'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
 interface AdminStats {
@@ -40,7 +44,7 @@ interface AdminUser {
   role: string
   isActive: boolean
   createdAt: string
-  _count: { orders: number; cartItems: number; reviews: number }
+  _count: { orders: number; cartItems?: number; reviews: number }
 }
 
 interface AdminShop {
@@ -56,6 +60,7 @@ interface AdminShop {
 interface AdminOrder {
   id: string
   status: string
+  subtotal: number
   total: number
   shippingFee: number
   paymentMethod: string
@@ -76,22 +81,27 @@ const statusColors: Record<string, string> = {
   CANCELLED: '#ef4444',
 }
 
-const adminTabs = [
-  { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
-  { id: 'users', label: 'Người dùng', icon: Users },
-  { id: 'shops', label: 'Sạp hàng', icon: Store },
-  { id: 'orders', label: 'Đơn hàng', icon: ClipboardList },
-  { id: 'chat', label: 'Nhắn tin', icon: MessageCircle },
-  { id: 'feedback', label: 'Phản hồi', icon: MessageSquareWarning },
-]
+// adminTabs is now defined dynamically inside the AdminDashboard component using translation keys
 
 export default function AdminDashboard() {
-  const { user, currentTab, setTab } = useAppStore()
+  const { user, currentTab, setTab, language, setLanguage } = useAppStore()
   const activeTab = currentTab || 'overview'
+  const t = translations[language]
 
   const handleTabChange = (tab: string) => {
     setTab(tab)
   }
+
+  const adminTabs = [
+    { id: 'overview', label: language === 'vi' ? 'Tổng quan' : 'Overview', icon: LayoutDashboard },
+    { id: 'users', label: language === 'vi' ? 'Người dùng' : 'Users', icon: Users },
+    { id: 'shops', label: t.shops, icon: Store },
+    { id: 'orders', label: t.orders, icon: ClipboardList },
+    { id: 'chat', label: t.chat, icon: MessageCircle },
+    { id: 'feedback', label: t.feedback, icon: MessageSquareWarning },
+    { id: 'settings', label: t.settings, icon: Settings },
+    { id: 'profile', label: t.profile, icon: User },
+  ]
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
@@ -100,13 +110,30 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-black text-green-700">Z-MARKET</h1>
-            <Badge variant="secondary" className="bg-rose-100 text-rose-700">Quản trị viên</Badge>
+            <Badge variant="secondary" className="bg-rose-100 text-rose-700">{t.role_admin}</Badge>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground hidden sm:block">{user?.name}</span>
-            <Button variant="ghost" size="sm" onClick={() => useAppStore.getState().logout()}>
-              Đăng xuất
-            </Button>
+            {/* Language Switcher */}
+            <div className="flex items-center gap-1 bg-muted rounded-full p-0.5 border">
+              <button
+                onClick={() => setLanguage('vi')}
+                className={`px-2 py-0.5 rounded-full text-xs font-bold transition-all ${
+                  language === 'vi' ? 'bg-white text-green-800 shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                VI
+              </button>
+              <button
+                onClick={() => setLanguage('en')}
+                className={`px-2 py-0.5 rounded-full text-xs font-bold transition-all ${
+                  language === 'en' ? 'bg-white text-green-800 shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                EN
+              </button>
+            </div>
+
+            <UserHeaderMenu />
           </div>
         </div>
       </header>
@@ -160,13 +187,15 @@ export default function AdminDashboard() {
             {activeTab === 'orders' && <OrdersTab />}
             {activeTab === 'chat' && user && <ChatPanel userId={user.id} userName={user.name} />}
             {activeTab === 'feedback' && user && <FeedbackPanel userId={user.id} userRole={user.role} />}
+            {activeTab === 'settings' && <SettingsTab />}
+            {activeTab === 'profile' && <ProfileTab />}
           </div>
         </main>
       </div>
 
       <footer className="bg-gray-900 text-gray-400 mt-auto">
         <div className="max-w-6xl mx-auto px-4 py-4 text-center text-sm">
-          © 2024 Z-Market — Chợ Số Việt Nam
+          © Z-Market — Chợ Số Việt Nam
         </div>
       </footer>
 
@@ -745,9 +774,18 @@ function OrdersTab() {
                     <span className="text-muted-foreground">Thanh toán</span>
                     <span>{getPaymentStatusLabel(order.paymentStatus)}</span>
                   </div>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Tiền hàng</span>
+                    <span>{formatPrice(order.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Phí ship</span>
+                    <span>{formatPrice(order.shippingFee)}</span>
+                  </div>
+                  <hr className="my-1 border-t" />
                   <div className="flex justify-between font-bold">
                     <span>Tổng</span>
-                    <span className="text-green-700">{formatPrice(order.total + order.shippingFee)}</span>
+                    <span className="text-green-700">{formatPrice(order.total)}</span>
                   </div>
                 </div>
               </CardContent>

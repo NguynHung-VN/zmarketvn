@@ -1,13 +1,9 @@
 import { cookies } from 'next/headers'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
-import { createHmac, timingSafeEqual } from 'crypto'
+import { jwtVerify, SignJWT } from 'jose'
 
-// Cookie signing secret - MUST be set via environment variable
-const COOKIE_SECRET = process.env.COOKIE_SECRET as string
-if (!COOKIE_SECRET) {
-  throw new Error('COOKIE_SECRET environment variable is required. Set it in .env.local')
-}
+const SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'dev-secret-change-me')
 
 // Password hashing using bcrypt (secure)
 const SALT_ROUNDS = 10
@@ -21,72 +17,60 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash)
 }
 
-// Sign a cookie value with HMAC
-function signCookieValue(value: string): string {
-  const signature = createHmac('sha256', COOKIE_SECRET).update(value).digest('hex')
-  return `${value}.${signature}`
-}
-
-// Verify a signed cookie value using timing-safe comparison
-function verifyCookieValue(signedValue: string): string | null {
-  const dotIndex = signedValue.lastIndexOf('.')
-  if (dotIndex === -1) return null
-
-  const value = signedValue.substring(0, dotIndex)
-  const signature = signedValue.substring(dotIndex + 1)
-
-  const expectedSignature = createHmac('sha256', COOKIE_SECRET).update(value).digest('hex')
-
-  // Timing-safe comparison to prevent timing attacks
-  try {
-    const sigBuf = Buffer.from(signature, 'hex')
-    const expectedBuf = Buffer.from(expectedSignature, 'hex')
-    if (sigBuf.length !== expectedBuf.length) return null
-    if (!timingSafeEqual(sigBuf, expectedBuf)) return null
-  } catch {
-    return null
-  }
-
-  return value
+export interface SessionUser {
+  id: string
+  email: string
+  name: string
+  role: string
+  isActive: boolean
 }
 
 // Get current user from cookie
 export async function getCurrentUser() {
   const cookieStore = await cookies()
-  const rawValue = cookieStore.get('userId')?.value
+  const token = cookieStore.get('token')?.value
 
-  if (!rawValue) return null
+  if (!token) return null
 
-  // Verify cookie signature
-  const userId = verifyCookieValue(rawValue)
-  if (!userId) return null
+  try {
+    const { payload } = await jwtVerify(token, SECRET)
+    const userId = payload.id as string
 
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      phone: true,
-      avatar: true,
-      role: true,
-      address: true,
-      isActive: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  })
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        avatar: true,
+        role: true,
+        address: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
 
-  if (!user || !user.isActive) return null
+    if (!user || !user.isActive) return null
 
-  return user
+    return user
+  } catch {
+    return null
+  }
+}
+
+export class AuthError extends Error {
+  constructor(public statusCode: number, message: string) {
+    super(message)
+  }
 }
 
 // Require authentication - throws if not logged in
 export async function requireAuth() {
   const user = await getCurrentUser()
   if (!user) {
-    throw new Error('Unauthorized')
+    throw new AuthError(401, 'Chưa đăng nhập')
   }
   return user
 }
@@ -95,17 +79,51 @@ export async function requireAuth() {
 export async function requireRole(...roles: string[]) {
   const user = await requireAuth()
   if (!roles.includes(user.role)) {
-    throw new Error('Forbidden')
+    throw new AuthError(403, 'Không có quyền truy cập')
   }
   return user
 }
 
-// Set auth cookie (signed)
-export function setAuthCookie(userId: string): Record<string, string> {
-  const signedValue = signCookieValue(userId)
+import { NextResponse } from 'next/server'
+export function errorResponse(error: unknown) {
+  if (error instanceof AuthError) {
+    return NextResponse.json({ error: error.message, code: error.statusCode }, { status: error.statusCode })
+  }
+  if (error instanceof Error) {
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Chưa đăng nhập', code: 401 }, { status: 401 })
+    }
+    if (error.message === 'Forbidden') {
+      return NextResponse.json({ error: 'Không có quyền truy cập', code: 403 }, { status: 403 })
+    }
+    console.error('[API Error]', error)
+    return NextResponse.json({ error: error.message || 'Lỗi server nội bộ', code: 500 }, { status: 500 })
+  }
+  return NextResponse.json({ error: 'Lỗi không xác định', code: 500 }, { status: 500 })
+}
+
+// Set auth cookie (signed JWT)
+export async function setAuthCookie(userId: string): Promise<Record<string, string>> {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true, role: true },
+  })
+  if (!user) return {}
+
+  const token = await new SignJWT({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime('7d')
+    .setIssuedAt()
+    .sign(SECRET)
+
   const secureFlag = process.env.NODE_ENV === 'production' ? '; Secure' : ''
   return {
-    'Set-Cookie': `userId=${signedValue}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${60 * 60 * 24 * 7}${secureFlag}`,
+    'Set-Cookie': `token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${60 * 60 * 24 * 7}${secureFlag}`,
   }
 }
 
@@ -113,6 +131,6 @@ export function setAuthCookie(userId: string): Record<string, string> {
 export function clearAuthCookie(): Record<string, string> {
   const secureFlag = process.env.NODE_ENV === 'production' ? '; Secure' : ''
   return {
-    'Set-Cookie': `userId=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secureFlag}`,
+    'Set-Cookie': `token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secureFlag}`,
   }
 }

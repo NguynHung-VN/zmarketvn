@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Set auth cookie
-    const headers = setAuthCookie(user.id)
+    const headers = await setAuthCookie(user.id)
 
     // Redirect to home page with success
     const response = NextResponse.redirect(new URL('/', request.url), { headers })

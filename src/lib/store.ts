@@ -18,6 +18,7 @@ export interface CartItem {
   quantity: number
   userId: string
   productId: string
+  variantId?: string | null
   createdAt: string
   product: {
     id: string
@@ -40,14 +41,16 @@ interface AppState {
   cartTotal: number
   isLoading: boolean
   chatTargetUserId: string | null
+  language: 'vi' | 'en'
   // methods
   setUser: (user: User | null) => void
   setView: (view: string) => void
   setTab: (tab: string) => void
   setChatTargetUserId: (id: string | null) => void
+  setLanguage: (lang: 'vi' | 'en') => void
   setLoading: (loading: boolean) => void
   fetchCart: () => Promise<void>
-  addToCart: (productId: string, quantity?: number) => Promise<void>
+  addToCart: (productId: string, quantity?: number, variantId?: string | null) => Promise<void>
   updateCartItem: (id: string, quantity: number) => Promise<void>
   removeCartItem: (id: string) => Promise<void>
   login: (email: string, password: string) => Promise<void>
@@ -61,16 +64,57 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentView: 'landing',
   currentTab: '',
   chatTargetUserId: null,
+  language: 'vi',
   cart: [],
   cartTotal: 0,
   isLoading: false,
 
   setUser: (user) => set({ user }),
   setChatTargetUserId: (chatTargetUserId) => set({ chatTargetUserId }),
+  setLanguage: (language) => set({ language }),
 
-  setView: (view) => set({ currentView: view, currentTab: '' }),
+  setView: (view) => {
+    set({ currentView: view, currentTab: '' })
+    if (typeof window !== 'undefined') {
+      if (view === 'buyer-dashboard') {
+        const buyerPaths = ['/san-pham', '/gio-hang', '/don-hang']
+        if (buyerPaths.includes(window.location.pathname)) {
+          return
+        }
+      }
+      const urlMap: Record<string, string> = {
+        landing: '/',
+        login: '/dang-nhap',
+        register: '/dang-ky',
+        'buyer-dashboard': '/san-pham',
+        'seller-dashboard': '/seller',
+        'shipper-dashboard': '/shipper',
+        'admin-dashboard': '/admin',
+      }
+      const newPath = urlMap[view]
+      if (newPath && window.location.pathname !== newPath) {
+        window.location.href = newPath
+      }
+    }
+  },
 
-  setTab: (tab) => set({ currentTab: tab }),
+  setTab: (tab) => {
+    set({ currentTab: tab })
+    if (typeof window !== 'undefined') {
+      const { currentView } = get()
+      if (currentView === 'buyer-dashboard') {
+        const tabMap: Record<string, string> = {
+          cart: '/gio-hang',
+          orders: '/don-hang',
+          products: '/san-pham',
+        }
+        const newPath = tabMap[tab]
+        if (newPath && window.location.pathname !== newPath) {
+          window.location.href = newPath
+        }
+      }
+    }
+  },
 
   setLoading: (isLoading) => set({ isLoading }),
 
@@ -86,12 +130,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  addToCart: async (productId, quantity = 1) => {
+  addToCart: async (productId, quantity = 1, variantId = null) => {
     try {
       const res = await csrfFetch('/api/cart', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, quantity }),
+        body: JSON.stringify({ productId, quantity, variantId }),
       })
       if (res.ok) {
         await get().fetchCart()
@@ -145,14 +189,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       const user = data.user as User
       set({ user, isLoading: false })
 
-      // Route to correct dashboard
+      // Route to correct dashboard using setView to sync browser URL
       const viewMap: Record<string, string> = {
         BUYER: 'buyer-dashboard',
         SELLER: 'seller-dashboard',
         SHIPPER: 'shipper-dashboard',
         ADMIN: 'admin-dashboard',
       }
-      set({ currentView: viewMap[user.role] || 'buyer-dashboard' })
+      get().setView(viewMap[user.role] || 'buyer-dashboard')
 
       // Fetch cart for buyer
       if (user.role === 'BUYER') {
@@ -177,7 +221,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         throw new Error(data.error || 'Đăng ký thất bại')
       }
       const user = data.user as User
-      set({ user, isLoading: false, currentView: 'buyer-dashboard' })
+      set({ user, isLoading: false })
+      get().setView('buyer-dashboard')
     } catch (error) {
       set({ isLoading: false })
       throw error
@@ -190,7 +235,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch {
       // ignore
     }
-    set({ user: null, currentView: 'landing', currentTab: '', cart: [], cartTotal: 0 })
+    set({ user: null, cart: [], cartTotal: 0 })
+    get().setView('landing')
   },
 
   checkAuth: async () => {
@@ -200,15 +246,23 @@ export const useAppStore = create<AppState>((set, get) => ({
         const data = await res.json()
         if (data.user) {
           const user = data.user as User
+          set({ user })
           const viewMap: Record<string, string> = {
             BUYER: 'buyer-dashboard',
             SELLER: 'seller-dashboard',
             SHIPPER: 'shipper-dashboard',
             ADMIN: 'admin-dashboard',
           }
-          set({ user, currentView: viewMap[user.role] || 'buyer-dashboard' })
-          if (user.role === 'BUYER') {
-            get().fetchCart()
+          const targetView = viewMap[user.role] || 'buyer-dashboard'
+          if (get().currentView !== targetView) {
+            get().setView(targetView)
+            if (user.role === 'BUYER') {
+              get().fetchCart()
+            }
+          } else {
+            if (user.role === 'BUYER') {
+              get().fetchCart()
+            }
           }
         }
       }

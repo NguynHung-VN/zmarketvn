@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth'
+import { searchUsers } from '@/modules/chat/service'
 
-// GET /api/chat/users - Search users for new conversations
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth()
@@ -11,28 +10,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || ''
     const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '20')), 50)
 
-    const where: Record<string, unknown> = {
-      id: { not: user.id },
-      isActive: true,
-    }
-
-    if (search) {
-      where.OR = [
-        { name: { contains: search } },
-      ]
-    }
-
-    const users = await db.user.findMany({
-      where,
-      select: {
-        id: true,
-        name: true,
-        avatar: true,
-        role: true,
-      },
-      take: limit,
-      orderBy: { name: 'asc' },
-    })
+    const users = await searchUsers(user.id, search, limit)
 
     return NextResponse.json({ users })
   } catch (error) {

@@ -25,6 +25,10 @@ import {
 } from 'lucide-react'
 import ChatPanel from './ChatPanel'
 import FeedbackPanel from './FeedbackPanel'
+import ProfileTab from './ProfileTab'
+import SettingsTab from './SettingsTab'
+import UserHeaderMenu from './UserHeaderMenu'
+import { translations } from '@/lib/translations'
 
 // Types
 interface Product {
@@ -89,6 +93,7 @@ interface OrderItem {
 interface Order {
   id: string
   status: string
+  subtotal: number
   total: number
   shippingFee: number
   address: string
@@ -96,7 +101,7 @@ interface Order {
   note?: string | null
   paymentMethod: string
   paymentStatus: string
-  buyerId: string
+  userId: string
   shopId: string
   shipperId?: string | null
   createdAt: string
@@ -153,16 +158,7 @@ function DiscountBadge({ originalPrice, price }: { originalPrice: number; price:
   )
 }
 
-const buyerTabs = [
-  { id: 'products', label: 'Sản phẩm', icon: ShoppingBag },
-  { id: 'shops', label: 'Sạp hàng', icon: Store },
-  { id: 'wishlist', label: 'Yêu thích', icon: Heart },
-  { id: 'cart', label: 'Giỏ hàng', icon: ShoppingCart },
-  { id: 'orders', label: 'Đơn hàng', icon: ClipboardList },
-  { id: 'chat', label: 'Nhắn tin', icon: MessageCircle },
-  { id: 'feedback', label: 'Phản hồi', icon: MessageSquareWarning },
-  { id: 'profile', label: 'Hồ sơ', icon: User },
-]
+// buyerTabs is now defined dynamically inside the BuyerDashboard component using translation keys
 
 export default function BuyerDashboard() {
   const {
@@ -176,8 +172,23 @@ export default function BuyerDashboard() {
     addToCart,
     updateCartItem,
     removeCartItem,
+    language,
+    setLanguage,
   } = useAppStore()
   const activeTab = currentTab || 'products'
+  const t = translations[language]
+
+  const buyerTabs = [
+    { id: 'products', label: t.products, icon: ShoppingBag },
+    { id: 'shops', label: t.shops, icon: Store },
+    { id: 'wishlist', label: t.wishlist, icon: Heart },
+    { id: 'cart', label: t.cart, icon: ShoppingCart },
+    { id: 'orders', label: t.orders, icon: ClipboardList },
+    { id: 'chat', label: t.chat, icon: MessageCircle },
+    { id: 'feedback', label: t.feedback, icon: MessageSquareWarning },
+    { id: 'settings', label: t.settings, icon: FileText },
+    { id: 'profile', label: t.profile, icon: User },
+  ]
 
   const handleTabChange = (tab: string) => {
     setTab(tab)
@@ -190,13 +201,30 @@ export default function BuyerDashboard() {
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-black text-green-700">Z-MARKET</h1>
-            <Badge variant="secondary" className="bg-green-100 text-green-700">Người mua</Badge>
+            <Badge variant="secondary" className="bg-green-100 text-green-700">{t.role_buyer}</Badge>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground hidden sm:block">{user?.name}</span>
-            <Button variant="ghost" size="sm" onClick={() => useAppStore.getState().logout()}>
-              Đăng xuất
-            </Button>
+            {/* Language Switcher */}
+            <div className="flex items-center gap-1 bg-muted rounded-full p-0.5 border">
+              <button
+                onClick={() => setLanguage('vi')}
+                className={`px-2 py-0.5 rounded-full text-xs font-bold transition-all ${
+                  language === 'vi' ? 'bg-white text-green-800 shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                VI
+              </button>
+              <button
+                onClick={() => setLanguage('en')}
+                className={`px-2 py-0.5 rounded-full text-xs font-bold transition-all ${
+                  language === 'en' ? 'bg-white text-green-800 shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                EN
+              </button>
+            </div>
+
+            <UserHeaderMenu />
           </div>
         </div>
       </header>
@@ -270,6 +298,7 @@ export default function BuyerDashboard() {
               />
             )}
             {activeTab === 'feedback' && user && <FeedbackPanel userId={user.id} userRole={user.role} />}
+            {activeTab === 'settings' && <SettingsTab />}
             {activeTab === 'profile' && <ProfileTab />}
           </div>
         </main>
@@ -278,7 +307,7 @@ export default function BuyerDashboard() {
       {/* Footer */}
       <footer className="bg-gray-950 text-gray-400 mt-auto">
         <div className="max-w-6xl mx-auto px-4 py-4 text-center text-sm">
-          © 2024 Z-Market — Chợ Số Việt Nam
+          © Z-Market — Chợ Số Việt Nam
         </div>
       </footer>
 
@@ -1030,29 +1059,46 @@ function ShopDetailView({ shopId, onBack }: { shopId: string; onBack: () => void
 
 // ==================== CART TAB ====================
 function CartTab() {
-  const { cart, cartTotal, updateCartItem, removeCartItem, fetchCart } = useAppStore()
+  const { cart, cartTotal, updateCartItem, removeCartItem, fetchCart, user } = useAppStore()
   const [checkingOut, setCheckingOut] = useState(false)
+  const [name, setName] = useState('')
   const [address, setAddress] = useState('')
   const [phone, setPhone] = useState('')
   const [note, setNote] = useState('')
 
   const handleCheckout = async () => {
+    const shippingName = name.trim() || user?.name || 'Khách hàng'
     if (!address.trim()) { toast.error('Vui lòng nhập địa chỉ giao hàng'); return }
     if (!phone.trim()) { toast.error('Vui lòng nhập số điện thoại'); return }
     setCheckingOut(true)
     try {
+      const items = cart.map((item) => ({
+        productId: item.productId,
+        variantId: item.variantId || undefined,
+        quantity: item.quantity,
+      }))
       const res = await csrfFetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, phone, note: note || undefined, paymentMethod: 'COD', shippingFee: 15000 }),
+        body: JSON.stringify({
+          items,
+          shippingName,
+          shippingPhone: phone,
+          shippingAddress: address,
+          paymentMethod: 'COD',
+          note: note || undefined,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Đặt hàng thất bại')
       toast.success('Đặt hàng thành công! 🎉')
       await fetchCart()
+      setName('')
       setAddress('')
       setPhone('')
       setNote('')
+      // Redirect to orders page after successful checkout
+      window.location.href = '/don-hang'
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Đặt hàng thất bại')
     }
@@ -1168,7 +1214,11 @@ function CartTab() {
           <MapPin className="h-4 w-4 text-green-600" />
           Thông tin giao hàng
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Tên người nhận</Label>
+            <Input placeholder="Họ và tên" value={name} onChange={(e) => setName(e.target.value)} className="transition-all focus:ring-2 focus:ring-green-200" />
+          </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Địa chỉ giao hàng *</Label>
             <Input placeholder="Số nhà, đường, quận..." value={address} onChange={(e) => setAddress(e.target.value)} className="transition-all focus:ring-2 focus:ring-green-200" />
@@ -1334,13 +1384,18 @@ function OrdersTab() {
                     </div>
                   ))}
                   <Separator className="my-1" />
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>Tiền hàng</span>
+                    <span>{formatPrice(order.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-muted-foreground">
                     <span>Phí giao hàng</span>
                     <span>{formatPrice(order.shippingFee)}</span>
                   </div>
+                  <Separator className="my-1" />
                   <div className="flex justify-between font-bold">
                     <span>Tổng cộng</span>
-                    <span className="text-green-700">{formatPrice(order.total + order.shippingFee)}</span>
+                    <span className="text-green-700">{formatPrice(order.total)}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
@@ -1751,48 +1806,4 @@ function WishlistTab() {
   )
 }
 
-// ==================== PROFILE TAB ====================
-function ProfileTab() {
-  const { user } = useAppStore()
-  if (!user) return null
-
-  return (
-    <div className="max-w-lg">
-      <h2 className="text-xl font-bold mb-6">Hồ sơ cá nhân</h2>
-      <Card className="border-0 shadow-sm overflow-hidden">
-        <div className="h-24 bg-gradient-to-r from-green-500 to-emerald-600 relative" />
-        <CardContent className="p-6 -mt-10 relative">
-          <div className="flex items-end gap-4 mb-6">
-            <div className="w-20 h-20 rounded-2xl bg-white shadow-lg flex items-center justify-center text-3xl font-bold text-green-700 border-4 border-white">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
-            <div className="pb-1">
-              <h3 className="text-lg font-bold">{user.name}</h3>
-              <Badge className="bg-green-100 text-green-700 border-green-200">Người mua</Badge>
-            </div>
-          </div>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="p-3 rounded-xl bg-muted/50">
-                <p className="text-xs text-muted-foreground mb-1">Email</p>
-                <p className="text-sm font-medium">{user.email}</p>
-              </div>
-              <div className="p-3 rounded-xl bg-muted/50">
-                <p className="text-xs text-muted-foreground mb-1">Số điện thoại</p>
-                <p className="text-sm font-medium">{user.phone || 'Chưa cập nhật'}</p>
-              </div>
-              <div className="p-3 rounded-xl bg-muted/50">
-                <p className="text-xs text-muted-foreground mb-1">Địa chỉ</p>
-                <p className="text-sm font-medium">{user.address || 'Chưa cập nhật'}</p>
-              </div>
-              <div className="p-3 rounded-xl bg-muted/50">
-                <p className="text-xs text-muted-foreground mb-1">Ngày tham gia</p>
-                <p className="text-sm font-medium">{formatDateTime(user.createdAt)}</p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
+// Shared ProfileTab component imported from ./ProfileTab

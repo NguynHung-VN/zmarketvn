@@ -10,7 +10,7 @@ export async function DELETE(
     const user = await requireAuth()
     const { id } = await params
 
-    const wishlistItem = await db.wishlistItem.findUnique({
+    const wishlistItem = await db.wishlist.findUnique({
       where: { id },
     })
 
@@ -28,7 +28,7 @@ export async function DELETE(
       )
     }
 
-    await db.wishlistItem.delete({ where: { id } })
+    await db.wishlist.delete({ where: { id } })
 
     return NextResponse.json({ message: 'Đã xóa khỏi danh sách yêu thích' })
   } catch (error) {

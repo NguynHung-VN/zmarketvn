@@ -183,7 +183,10 @@ function UserFeedbackPanel({ userId }: { userId: string }) {
   }, [page])
 
   useEffect(() => {
-    fetchFeedbacks()
+    const timer = setTimeout(() => {
+      fetchFeedbacks()
+    }, 0)
+    return () => clearTimeout(timer)
   }, [fetchFeedbacks])
 
   const handleSubmit = async () => {
@@ -494,7 +497,10 @@ function AdminFeedbackPanel({ userId }: { userId: string }) {
   }, [page, filterStatus, filterType, filterPriority, searchQuery])
 
   useEffect(() => {
-    fetchFeedbacks()
+    const timer = setTimeout(() => {
+      fetchFeedbacks()
+    }, 0)
+    return () => clearTimeout(timer)
   }, [fetchFeedbacks])
 
   const handleReply = async () => {

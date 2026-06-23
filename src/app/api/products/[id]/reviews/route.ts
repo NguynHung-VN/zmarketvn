@@ -37,18 +37,19 @@ export async function POST(
       return NextResponse.json({ error: 'Bạn đã đánh giá sản phẩm này rồi' }, { status: 400 })
     }
 
-    // Verify user has a delivered order with this product
+    // Verify user has a delivered order with this product that has not been reviewed yet
     const orderItem = await db.orderItem.findFirst({
       where: {
         productId,
         order: {
-          buyerId: user.id,
+          userId: user.id,
           status: 'DELIVERED',
+          review: null,
         },
       },
     })
     if (!orderItem) {
-      return NextResponse.json({ error: 'Bạn chỉ có thể đánh giá sản phẩm đã mua và nhận hàng' }, { status: 400 })
+      return NextResponse.json({ error: 'Bạn chỉ có thể đánh giá sản phẩm đã mua và nhận hàng (và chưa đánh giá)' }, { status: 400 })
     }
 
     // Sanitize comment
@@ -60,6 +61,7 @@ export async function POST(
         comment: sanitizedComment,
         userId: user.id,
         productId,
+        orderId: orderItem.orderId,
       },
       include: {
         user: {

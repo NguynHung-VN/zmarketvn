@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { validateImageUpload } from '@/lib/upload-security'
 import { uploadToCloudinary } from '@/lib/cloudinary'
+import { rateLimiters } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimitResponse = rateLimiters.upload(request)
+    if (rateLimitResponse) return rateLimitResponse
+
     const user = await requireAuth()
 
     const formData = await request.formData()

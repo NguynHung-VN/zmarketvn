@@ -8,15 +8,24 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Require authentication to view product images
     await requireAuth()
-
     const { id } = await params
 
-    const images = await db.productImage.findMany({
-      where: { productId: id },
-      orderBy: { order: 'asc' },
+    const product = await db.product.findUnique({
+      where: { id },
+      select: { images: true },
     })
+
+    if (!product) {
+      return NextResponse.json({ error: 'Không tìm thấy sản phẩm' }, { status: 404 })
+    }
+
+    const images = product.images.map((url, index) => ({
+      id: url,
+      url,
+      productId: id,
+      order: index,
+    }))
 
     return NextResponse.json({ images })
   } catch (error) {
@@ -42,7 +51,6 @@ export async function POST(
     const body = await request.json()
     const data = addImageSchema.parse(body)
 
-    // Verify product belongs to this seller's shop
     const shop = await db.shop.findUnique({ where: { ownerId: user.id } })
     if (!shop && user.role !== 'ADMIN') {
       return NextResponse.json(
@@ -53,6 +61,7 @@ export async function POST(
 
     const product = await db.product.findFirst({
       where: { id, ...(shop ? { shopId: shop.id } : {}) },
+      select: { id: true, images: true },
     })
 
     if (!product) {
@@ -62,24 +71,25 @@ export async function POST(
       )
     }
 
-    // If order not specified, put it at the end
-    let imageOrder = data.order
-    if (imageOrder === undefined) {
-      const maxOrderImage = await db.productImage.findFirst({
-        where: { productId: id },
-        orderBy: { order: 'desc' },
-        select: { order: true },
-      })
-      imageOrder = maxOrderImage ? maxOrderImage.order + 1 : 0
-    }
+    const currentImages = [...product.images]
+    let targetIndex = data.order ?? currentImages.length
+    targetIndex = Math.min(Math.max(0, targetIndex), currentImages.length)
+    currentImages.splice(targetIndex, 0, data.url)
 
-    const image = await db.productImage.create({
+    await db.product.update({
+      where: { id },
       data: {
-        url: data.url,
-        productId: id,
-        order: imageOrder,
+        images: currentImages,
+        image: currentImages[0] || null,
       },
     })
+
+    const image = {
+      id: data.url,
+      url: data.url,
+      productId: id,
+      order: targetIndex,
+    }
 
     return NextResponse.json(
       { image, message: 'Đã thêm hình ảnh' },
@@ -121,7 +131,6 @@ export async function DELETE(
     const body = await request.json()
     const data = deleteImageSchema.parse(body)
 
-    // Verify product belongs to this seller's shop
     const shop = await db.shop.findUnique({ where: { ownerId: user.id } })
     if (!shop && user.role !== 'ADMIN') {
       return NextResponse.json(
@@ -132,6 +141,7 @@ export async function DELETE(
 
     const product = await db.product.findFirst({
       where: { id, ...(shop ? { shopId: shop.id } : {}) },
+      select: { id: true, images: true },
     })
 
     if (!product) {
@@ -141,20 +151,19 @@ export async function DELETE(
       )
     }
 
-    // Find and verify the image belongs to this product
-    const image = await db.productImage.findFirst({
-      where: { id: data.imageId, productId: id },
+    // Filter out the deleted image URL (which was mapped as the imageId)
+    // We also support the case where imageId is index-based or contains the URL
+    const currentImages = product.images.filter((url, index) => {
+      const isMatchById = url === data.imageId || `${id}-image-${index}` === data.imageId
+      return !isMatchById
     })
 
-    if (!image) {
-      return NextResponse.json(
-        { error: 'Không tìm thấy hình ảnh' },
-        { status: 404 }
-      )
-    }
-
-    await db.productImage.delete({
-      where: { id: data.imageId },
+    await db.product.update({
+      where: { id },
+      data: {
+        images: currentImages,
+        image: currentImages[0] || null,
+      },
     })
 
     return NextResponse.json({ message: 'Đã xóa hình ảnh' })

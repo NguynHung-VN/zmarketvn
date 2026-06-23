@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth'
 import { rateLimiters } from '@/lib/rate-limit'
-import { sanitizeForStorage } from '@/lib/sanitize'
 import { z } from 'zod/v4'
-
-const sendMessageSchema = z.object({
-  conversationId: z.string().min(1, 'Vui lòng chọn cuộc trò chuyện'),
-  content: z.string().min(1, 'Nội dung tin nhắn không được để trống').max(5000, 'Tin nhắn quá dài'),
-  type: z.enum(['TEXT', 'IMAGE', 'SYSTEM']).default('TEXT'),
-  imageUrl: z.string().max(2000, 'URL hình ảnh quá dài').optional(),
-})
+import { sendMessageSchema } from '@/modules/chat/schema'
+import { sendMessage, ServiceError } from '@/modules/chat/service'
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,70 +15,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const data = sendMessageSchema.parse(body)
 
-    // Sanitize content for storage
-    const sanitizedContent = sanitizeForStorage(data.content)
-
-    // Verify user is a participant in the conversation
-    const participant = await db.participant.findUnique({
-      where: {
-        conversationId_userId: {
-          conversationId: data.conversationId,
-          userId: user.id,
-        },
-      },
-    })
-
-    if (!participant) {
-      return NextResponse.json(
-        { error: 'Không có quyền gửi tin nhắn trong cuộc trò chuyện này' },
-        { status: 403 }
-      )
-    }
-
-    // Verify conversation exists
-    const conversation = await db.conversation.findUnique({
-      where: { id: data.conversationId },
-    })
-
-    if (!conversation) {
-      return NextResponse.json(
-        { error: 'Không tìm thấy cuộc trò chuyện' },
-        { status: 404 }
-      )
-    }
-
-    // If type is IMAGE, imageUrl is required
-    if (data.type === 'IMAGE' && !data.imageUrl) {
-      return NextResponse.json(
-        { error: 'Tin nhắn hình ảnh cần có URL hình ảnh' },
-        { status: 400 }
-      )
-    }
-
-    // Create message
-    const message = await db.message.create({
-      data: {
-        content: sanitizedContent,
-        type: data.type,
-        imageUrl: data.imageUrl || null,
-        conversationId: data.conversationId,
-        senderId: user.id,
-      },
-      include: {
-        sender: {
-          select: { id: true, name: true, avatar: true },
-        },
-      },
-    })
-
-    // Update conversation's updatedAt timestamp
-    await db.conversation.update({
-      where: { id: data.conversationId },
-      data: { updatedAt: new Date() },
-    })
+    const formattedMessage = await sendMessage(user.id, data)
 
     return NextResponse.json(
-      { message, msg: 'Đã gửi tin nhắn' },
+      { message: formattedMessage, msg: 'Đã gửi tin nhắn' },
       { status: 201 }
     )
   } catch (error) {
@@ -94,6 +27,9 @@ export async function POST(request: NextRequest) {
     }
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
+    }
+    if (error instanceof ServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode })
     }
     return NextResponse.json({ error: 'Lỗi server' }, { status: 500 })
   }

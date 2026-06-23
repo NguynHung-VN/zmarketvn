@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getProductDetail, ServiceError } from '@/modules/catalog/service'
 
 export async function GET(
   request: NextRequest,
@@ -7,51 +7,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-
-    const product = await db.product.findUnique({
-      where: { id },
-      include: {
-        shop: {
-          select: {
-            id: true,
-            name: true,
-            image: true,
-            address: true,
-            phone: true,
-            rating: true,
-          },
-        },
-        category: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
-        },
-        reviews: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                avatar: true,
-              },
-            },
-          },
-          orderBy: { createdAt: 'desc' },
-        },
-      },
-    })
-
-    if (!product) {
-      return NextResponse.json(
-        { error: 'Không tìm thấy sản phẩm' },
-        { status: 404 }
-      )
-    }
-
+    const product = await getProductDetail(id)
     return NextResponse.json({ product })
-  } catch {
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode })
+    }
     return NextResponse.json(
       { error: 'Lỗi server' },
       { status: 500 }

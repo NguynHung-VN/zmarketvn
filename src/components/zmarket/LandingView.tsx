@@ -6,44 +6,34 @@ import { useAppStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ShoppingBag, Store, Bike, ArrowRight, Star, Clock, Package, Truck, CalendarCheck, Quote, Heart, ShieldCheck, Zap } from 'lucide-react'
+import TermsModal from './TermsModal'
+import { translations } from '@/lib/translations'
+
+import { CountUp } from '@/components/CountUp'
 
 // Animated counter component
 function AnimatedCounter({ target, suffix = '' }: { target: number; suffix?: string }) {
-  const [count, setCount] = useState(0)
   const ref = useRef<HTMLDivElement>(null)
-  const hasAnimated = useRef(false)
+  const [visible, setVisible] = useState(false)
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && !hasAnimated.current) {
-          hasAnimated.current = true
-          let start = 0
-          const duration = 1500
-          const startTime = performance.now()
-          const animate = (currentTime: number) => {
-            const elapsed = currentTime - startTime
-            const progress = Math.min(elapsed / duration, 1)
-            // Ease out cubic
-            const eased = 1 - Math.pow(1 - progress, 3)
-            start = Math.floor(eased * target)
-            setCount(start)
-            if (progress < 1) {
-              requestAnimationFrame(animate)
-            } else {
-              setCount(target)
-            }
-          }
-          requestAnimationFrame(animate)
+        if (entry.isIntersecting) {
+          setVisible(true)
         }
       },
       { threshold: 0.3 }
     )
     if (ref.current) observer.observe(ref.current)
     return () => observer.disconnect()
-  }, [target])
+  }, [])
 
-  return <div ref={ref}>{count}{suffix}</div>
+  return (
+    <div ref={ref}>
+      {visible ? <CountUp end={target} suffix={suffix} /> : <span>0{suffix}</span>}
+    </div>
+  )
 }
 
 // Fade-in on scroll component with framer-motion
@@ -153,12 +143,58 @@ const partners = [
 ]
 
 export default function LandingView() {
-  const { setView } = useAppStore()
+  const { setView, language, setLanguage } = useAppStore()
+  const [termsOpen, setTermsOpen] = useState(false)
+  const t = translations[language]
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Floating Header */}
+      <header className="absolute top-0 left-0 right-0 z-50 py-4 bg-transparent">
+        <div className="max-w-6xl mx-auto px-4 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl font-black tracking-wider text-white">Z-MARKET</span>
+          </div>
+          <div className="flex items-center gap-4">
+            {/* Language Switcher */}
+            <div className="flex items-center gap-1 bg-white/10 backdrop-blur-md rounded-full p-1 border border-white/20">
+              <button
+                onClick={() => setLanguage('vi')}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                  language === 'vi' ? 'bg-white text-green-800 shadow-sm' : 'text-white hover:text-green-200'
+                }`}
+              >
+                VI
+              </button>
+              <button
+                onClick={() => setLanguage('en')}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                  language === 'en' ? 'bg-white text-green-800 shadow-sm' : 'text-white hover:text-green-200'
+                }`}
+              >
+                EN
+              </button>
+            </div>
+            
+            <Button
+              variant="ghost"
+              className="text-white hover:bg-white/10 text-sm font-semibold"
+              onClick={() => setView('login')}
+            >
+              {language === 'vi' ? 'Đăng nhập' : 'Log in'}
+            </Button>
+            <Button
+              className="bg-white text-green-700 hover:bg-green-50 text-sm font-bold shadow-md"
+              onClick={() => setView('register')}
+            >
+              {language === 'vi' ? 'Đăng ký' : 'Register'}
+            </Button>
+          </div>
+        </div>
+      </header>
+
       {/* Hero Section with Background Image */}
-      <section className="relative text-white overflow-hidden min-h-[650px] flex items-center">
+      <section className="relative text-white overflow-hidden min-h-[650px] flex items-center pt-16">
         {/* Background Image */}
         <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat"
@@ -210,7 +246,7 @@ export default function LandingView() {
             className="mb-8 inline-flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-full px-5 py-2.5 text-sm border border-white/20 shadow-lg"
           >
             <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shadow-sm shadow-green-400/50" />
-            Chợ truyền thống số hoá
+            {t.landing_subtitle}
           </motion.div>
 
           {/* Animated gradient hero title */}
@@ -225,7 +261,7 @@ export default function LandingView() {
                 animation: 'gradientShift 4s ease infinite',
               }}
             >
-              Z-MARKET
+              {t.landing_title}
             </span>
           </motion.h1>
 
@@ -235,7 +271,7 @@ export default function LandingView() {
             transition={{ duration: 0.8, delay: 0.4 }}
             className="text-lg sm:text-xl text-green-100/90 max-w-2xl mx-auto mb-10 leading-relaxed"
           >
-            Mua sắm thực phẩm tươi ngon từ chợ truyền thống, giao hàng tận nơi chỉ trong 15 phút
+            {t.landing_desc}
           </motion.p>
 
           <motion.div
@@ -249,7 +285,7 @@ export default function LandingView() {
               className="bg-white text-green-700 hover:bg-green-50 font-semibold text-base px-8 h-13 shadow-xl hover:shadow-2xl transition-all hover:scale-105 group"
               onClick={() => setView('login')}
             >
-              Đăng nhập ngay
+              {language === 'vi' ? 'Đăng nhập ngay' : 'Log in now'}
               <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </Button>
             <Button
@@ -258,7 +294,7 @@ export default function LandingView() {
               className="border-white/30 text-white hover:bg-white/10 font-semibold text-base px-8 h-13 backdrop-blur-md hover:scale-105 transition-all"
               onClick={() => setView('register')}
             >
-              Tạo tài khoản
+              {language === 'vi' ? 'Tạo tài khoản' : 'Create account'}
             </Button>
           </motion.div>
         </div>
@@ -274,14 +310,14 @@ export default function LandingView() {
       {/* Role Cards */}
       <section className="max-w-6xl mx-auto px-4 py-12 sm:py-20 -mt-2">
         <FadeInSection>
-          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-2">Chọn vai trò của bạn</h2>
-          <p className="text-muted-foreground text-center mb-10">Z-Market dành cho mọi người</p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-2">{language === 'vi' ? 'Chọn vai trò của bạn' : 'Select your role'}</h2>
+          <p className="text-muted-foreground text-center mb-10">{language === 'vi' ? 'Z-Market dành cho mọi người' : 'Z-Market is for everyone'}</p>
         </FadeInSection>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {[
-            { icon: ShoppingBag, emoji: '🛍️', title: 'Người mua', desc: 'Khám phá hàng ngàn sản phẩm tươi ngon, đặt hàng dễ dàng, giao hàng nhanh chóng', gradient: 'from-green-50 to-emerald-50', border: 'border-green-200/60', iconBg: 'bg-gradient-to-br from-green-400 to-emerald-500', iconColor: 'text-white', hoverShadow: 'hover:shadow-green-200/50' },
-            { icon: Store, emoji: '🏪', title: 'Tiểu thương', desc: 'Đưa sạp hàng lên mạng, tiếp cận hàng nghìn khách hàng, quản lý đơn hàng dễ dàng', gradient: 'from-amber-50 to-orange-50', border: 'border-amber-200/60', iconBg: 'bg-gradient-to-br from-amber-400 to-orange-500', iconColor: 'text-white', hoverShadow: 'hover:shadow-amber-200/50' },
-            { icon: Bike, emoji: '🏍️', title: 'Shipper', desc: 'Nhận đơn giao hàng linh hoạt, thu nhập hấp dẫn, theo dõi đơn hàng tiện lợi', gradient: 'from-sky-50 to-cyan-50', border: 'border-sky-200/60', iconBg: 'bg-gradient-to-br from-sky-400 to-cyan-500', iconColor: 'text-white', hoverShadow: 'hover:shadow-sky-200/50' },
+            { icon: ShoppingBag, emoji: '🛍️', title: t.role_buyer, desc: language === 'vi' ? 'Khám phá hàng ngàn sản phẩm tươi ngon, đặt hàng dễ dàng, giao hàng nhanh chóng' : 'Explore thousands of fresh products, order easily, fast delivery', gradient: 'from-green-50 to-emerald-50', border: 'border-green-200/60', iconBg: 'bg-gradient-to-br from-green-400 to-emerald-500', iconColor: 'text-white', hoverShadow: 'hover:shadow-green-200/50' },
+            { icon: Store, emoji: '🏪', title: t.role_seller, desc: language === 'vi' ? 'Đưa sạp hàng lên mạng, tiếp cận hàng nghìn khách hàng, quản lý đơn hàng dễ dàng' : 'Bring your stall online, reach thousands of customers, manage orders easily', gradient: 'from-amber-50 to-orange-50', border: 'border-amber-200/60', iconBg: 'bg-gradient-to-br from-amber-400 to-orange-500', iconColor: 'text-white', hoverShadow: 'hover:shadow-amber-200/50' },
+            { icon: Bike, emoji: '🏍️', title: t.role_shipper, desc: language === 'vi' ? 'Nhận đơn giao hàng linh hoạt, thu nhập hấp dẫn, theo dõi đơn hàng tiện lợi' : 'Take flexible delivery jobs, attractive income, track orders easily', gradient: 'from-sky-50 to-cyan-50', border: 'border-sky-200/60', iconBg: 'bg-gradient-to-br from-sky-400 to-cyan-500', iconColor: 'text-white', hoverShadow: 'hover:shadow-sky-200/50' },
           ].map((role, i) => (
             <FadeInSection key={role.emoji} delay={i * 150}>
               <Card
@@ -398,14 +434,14 @@ export default function LandingView() {
       <section className="bg-gradient-to-b from-muted/30 to-transparent">
         <div className="max-w-6xl mx-auto px-4 py-12 sm:py-20">
           <FadeInSection>
-            <h2 className="text-2xl sm:text-3xl font-bold text-center mb-12">Tính năng nổi bật</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold text-center mb-12">{language === 'vi' ? 'Tính năng nổi bật' : 'Key Features'}</h2>
           </FadeInSection>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
-              { icon: Package, title: 'Xem sản phẩm & sạp hàng', desc: 'Duyệt hàng ngàn sản phẩm từ các sạp hàng truyền thống', gradient: 'from-green-500 to-emerald-500' },
-              { icon: ShoppingBag, title: 'Giỏ hàng & thanh toán', desc: 'Thêm vào giỏ hàng và thanh toán dễ dàng, đa dạng phương thức', gradient: 'from-teal-500 to-cyan-500' },
-              { icon: Truck, title: 'Theo dõi đơn hàng', desc: 'Cập nhật trạng thái đơn hàng theo thời gian thực', gradient: 'from-purple-500 to-violet-500' },
-              { icon: CalendarCheck, title: 'Đặt lịch giao hàng', desc: 'Chọn thời gian giao hàng phù hợp với bạn', gradient: 'from-amber-500 to-orange-500' },
+              { icon: Package, title: language === 'vi' ? 'Xem sản phẩm & sạp hàng' : 'Browse Stalls & Products', desc: language === 'vi' ? 'Duyệt hàng ngàn sản phẩm từ các sạp hàng truyền thống' : 'Browse thousands of fresh items directly from local stalls', gradient: 'from-green-500 to-emerald-500' },
+              { icon: ShoppingBag, title: language === 'vi' ? 'Giỏ hàng & thanh toán' : 'Cart & Checkout', desc: language === 'vi' ? 'Thêm vào giỏ hàng và thanh toán dễ dàng, đa dạng phương thức' : 'Easy cart management and multiple secure checkout methods', gradient: 'from-teal-500 to-cyan-500' },
+              { icon: Truck, title: language === 'vi' ? 'Theo dõi đơn hàng' : 'Order Tracking', desc: language === 'vi' ? 'Cập nhật trạng thái đơn hàng theo thời gian thực' : 'Real-time updates on your order and shipment delivery status', gradient: 'from-purple-500 to-violet-500' },
+              { icon: CalendarCheck, title: language === 'vi' ? 'Đặt lịch giao hàng' : 'Scheduled Delivery', desc: language === 'vi' ? 'Chọn thời gian giao hàng phù hợp với bạn' : 'Flexible scheduler to choose your preferred delivery time', gradient: 'from-amber-500 to-orange-500' },
             ].map((feature, i) => (
               <FadeInSection key={i} delay={i * 100}>
                 <div className="flex gap-4 p-5 rounded-2xl bg-white/60 backdrop-blur-sm border border-white/80 hover:bg-white hover:shadow-lg transition-all duration-300 hover:-translate-y-1 group">
@@ -426,8 +462,8 @@ export default function LandingView() {
       {/* Testimonials */}
       <section className="max-w-6xl mx-auto px-4 py-12 sm:py-20">
         <FadeInSection>
-          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-2">Khách hàng nói gì</h2>
-          <p className="text-muted-foreground text-center mb-12">Hàng ngàn người tin dùng Z-Market</p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-2">{language === 'vi' ? 'Khách hàng nói gì' : 'What Our Customers Say'}</h2>
+          <p className="text-muted-foreground text-center mb-12">{language === 'vi' ? 'Hàng ngàn người tin dùng Z-Market' : 'Thousands of active users trust Z-Market'}</p>
         </FadeInSection>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {testimonials.map((t, i) => (
@@ -464,7 +500,7 @@ export default function LandingView() {
       <section className="bg-muted/30 py-12">
         <div className="max-w-6xl mx-auto px-4">
           <FadeInSection>
-            <p className="text-center text-sm text-muted-foreground mb-8 font-medium uppercase tracking-wider">Đối tác tin cậy</p>
+            <p className="text-center text-sm text-muted-foreground mb-8 font-medium uppercase tracking-wider">{language === 'vi' ? 'Đối tác tin cậy' : 'Trusted Partners'}</p>
             <div className="flex flex-wrap justify-center gap-4 sm:gap-6">
               {partners.map((p, i) => (
                 <motion.div
@@ -491,16 +527,16 @@ export default function LandingView() {
         </div>
         <div className="relative max-w-4xl mx-auto px-4 py-14 sm:py-20 text-center">
           <FadeInSection>
-            <h2 className="text-2xl sm:text-4xl font-black mb-5">Tham gia cùng 200+ sạp hàng</h2>
+            <h2 className="text-2xl sm:text-4xl font-black mb-5">{language === 'vi' ? 'Tham gia cùng 200+ sạp hàng' : 'Join 200+ Market Stalls'}</h2>
             <p className="text-green-100 mb-8 max-w-xl mx-auto text-lg leading-relaxed">
-              Hàng ngàn sản phẩm tươi ngon đang chờ bạn. Đăng ký ngay để nhận ưu đãi đặc biệt!
+              {language === 'vi' ? 'Hàng ngàn sản phẩm tươi ngon đang chờ bạn. Đăng ký ngay để nhận ưu đãi đặc biệt!' : 'Thousands of fresh, high-quality products await. Register today for special deals!'}
             </p>
             <Button
               size="lg"
               className="bg-white text-green-700 hover:bg-green-50 font-bold px-10 h-13 shadow-xl hover:shadow-2xl hover:scale-105 transition-all group"
               onClick={() => setView('register')}
             >
-              Đăng ký miễn phí
+              {language === 'vi' ? 'Đăng ký miễn phí' : 'Register for Free'}
               <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </Button>
           </FadeInSection>
@@ -516,7 +552,7 @@ export default function LandingView() {
               <h3 className="text-2xl font-black text-white mb-3 tracking-tight">
                 <span className="bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-emerald-400">Z-MARKET</span>
               </h3>
-              <p className="text-sm leading-relaxed text-gray-400">Chợ truyền thống số hoá — Mua sắm thực phẩm tươi ngon, giao hàng tận nơi nhanh chóng.</p>
+              <p className="text-sm leading-relaxed text-gray-400">{language === 'vi' ? 'Chợ truyền thống số hoá — Mua sắm thực phẩm tươi ngon, giao hàng tận nơi nhanh chóng.' : 'Digitized traditional market — Buy fresh foods, fast delivery to your door.'}</p>
               <div className="flex gap-3 mt-5">
                 <div className="w-9 h-9 rounded-lg bg-gray-800/80 hover:bg-green-600 flex items-center justify-center transition-colors cursor-pointer text-sm border border-gray-700/50 hover:border-green-500">📘</div>
                 <div className="w-9 h-9 rounded-lg bg-gray-800/80 hover:bg-green-600 flex items-center justify-center transition-colors cursor-pointer text-sm border border-gray-700/50 hover:border-green-500">📸</div>
@@ -525,25 +561,25 @@ export default function LandingView() {
             </div>
             {/* Links */}
             <div>
-              <h4 className="font-semibold text-white mb-4 text-sm uppercase tracking-wider">Sản phẩm</h4>
+              <h4 className="font-semibold text-white mb-4 text-sm uppercase tracking-wider">{language === 'vi' ? 'Sản phẩm' : 'Products'}</h4>
               <ul className="space-y-3 text-sm">
-                <li><button className="hover:text-green-400 transition-colors" onClick={() => setView('login')}>🥬 Rau củ quả</button></li>
-                <li><button className="hover:text-green-400 transition-colors" onClick={() => setView('login')}>🥩 Thịt & cá</button></li>
-                <li><button className="hover:text-green-400 transition-colors" onClick={() => setView('login')}>🌶️ Gia vị</button></li>
-                <li><button className="hover:text-green-400 transition-colors" onClick={() => setView('login')}>🥜 Thực phẩm khô</button></li>
+                <li><button className="hover:text-green-400 transition-colors" onClick={() => setView('login')}>{language === 'vi' ? '🥬 Rau củ quả' : '🥬 Vegetables & Fruits'}</button></li>
+                <li><button className="hover:text-green-400 transition-colors" onClick={() => setView('login')}>{language === 'vi' ? '🥩 Thịt & cá' : '🥩 Meat & Fish'}</button></li>
+                <li><button className="hover:text-green-400 transition-colors" onClick={() => setView('login')}>{language === 'vi' ? '🌶️ Gia vị' : '🌶️ Spices'}</button></li>
+                <li><button className="hover:text-green-400 transition-colors" onClick={() => setView('login')}>{language === 'vi' ? '🥜 Thực phẩm khô' : '🥜 Dried Foods'}</button></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-white mb-4 text-sm uppercase tracking-wider">Hỗ trợ</h4>
+              <h4 className="font-semibold text-white mb-4 text-sm uppercase tracking-wider">{language === 'vi' ? 'Hỗ trợ' : 'Supports'}</h4>
               <ul className="space-y-3 text-sm">
-                <li><span className="hover:text-green-400 transition-colors cursor-pointer">❓ Trung tâm trợ giúp</span></li>
-                <li><span className="hover:text-green-400 transition-colors cursor-pointer">🔄 Chính sách đổi trả</span></li>
-                <li><span className="hover:text-green-400 transition-colors cursor-pointer">📋 Điều khoản sử dụng</span></li>
-                <li><span className="hover:text-green-400 transition-colors cursor-pointer">📞 Liên hệ</span></li>
+                <li><span className="hover:text-green-400 transition-colors cursor-pointer">{language === 'vi' ? '❓ Trung tâm trợ giúp' : '❓ Help Center'}</span></li>
+                <li><span className="hover:text-green-400 transition-colors cursor-pointer">{language === 'vi' ? '🔄 Chính sách đổi trả' : '🔄 Returns & Refund'}</span></li>
+                <li><span className="hover:text-green-400 transition-colors cursor-pointer" onClick={() => setTermsOpen(true)}>{t.terms_of_service}</span></li>
+                <li><span className="hover:text-green-400 transition-colors cursor-pointer">{language === 'vi' ? '📞 Liên hệ' : '📞 Contact Us'}</span></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-white mb-4 text-sm uppercase tracking-wider">Kết nối</h4>
+              <h4 className="font-semibold text-white mb-4 text-sm uppercase tracking-wider">{language === 'vi' ? 'Kết nối' : 'Connect'}</h4>
               <div className="space-y-3 text-sm">
                 <p className="flex items-center gap-2"><span>📞</span> Hotline: 1900-xxxx</p>
                 <p className="flex items-center gap-2"><span>✉️</span> support@zmarket.vn</p>
@@ -552,16 +588,18 @@ export default function LandingView() {
             </div>
           </div>
           <div className="border-t border-gray-800 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm">
-            <p>© 2024 Z-Market — Chợ Số Việt Nam. Tất cả quyền được bảo lưu.</p>
+            <p>{language === 'vi' ? '© Z-Market — Chợ Số Việt Nam. Tất cả quyền được bảo lưu.' : '© Z-Market — Vietnamese Market. All rights reserved.'}</p>
             <div className="flex items-center gap-1 text-xs text-gray-500">
               <ShieldCheck className="h-3.5 w-3.5" />
-              Bảo mật & An toàn
+              {language === 'vi' ? 'Bảo mật & An toàn' : 'Safe & Secure'}
               <span className="mx-2">•</span>
               <Zap className="h-3.5 w-3.5" />
-              Giao hàng nhanh
+              {language === 'vi' ? 'Giao hàng nhanh' : 'Express Delivery'}
             </div>
           </div>
         </div>
+
+        <TermsModal open={termsOpen} onClose={() => setTermsOpen(false)} />
       </footer>
 
       {/* Global animation keyframes */}

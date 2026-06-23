@@ -273,7 +273,7 @@ export default function LoginView() {
       {/* Footer */}
       <footer className="bg-gray-950 text-gray-400 mt-auto">
         <div className="max-w-6xl mx-auto px-4 py-4 text-center text-sm">
-          © 2024 Z-Market — Chợ Số Việt Nam
+          © Z-Market — Chợ Số Việt Nam
         </div>
       </footer>
     </div>

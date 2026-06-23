@@ -1,6 +1,23 @@
 import type { NextConfig } from "next";
 
+const cspHeader = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",  // Next.js needs unsafe-inline/eval
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https: blob:",                 // allow images from all https CDNs
+  "font-src 'self' data:",
+  "connect-src 'self' https://sandbox.vnpayment.vn https://api.momo.vn wss://*.pusher.com wss://*.ably.com",
+  "frame-src https://sandbox.vnpayment.vn",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self' https://sandbox.vnpayment.vn",
+].join('; ');
+
 const securityHeaders = [
+  {
+    key: 'Content-Security-Policy',
+    value: cspHeader,
+  },
   {
     key: 'X-Content-Type-Options',
     value: 'nosniff',
@@ -24,13 +41,10 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  // Vercel handles its own build output - no need for standalone
-  // For other deployments (Docker, VM), set output: "standalone" manually
   typescript: {
     ignoreBuildErrors: false,
   },
   reactStrictMode: true,
-  // Allow external images from CDN and cloud services
   images: {
     remotePatterns: [
       {

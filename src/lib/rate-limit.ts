@@ -40,6 +40,9 @@ export function checkRateLimit(
   request: NextRequest,
   options: RateLimitOptions
 ): NextResponse | null {
+  if (process.env.NODE_ENV !== 'production') {
+    return null
+  }
   cleanupOldEntries()
 
   const { maxRequests, windowMs = 60000, keyPrefix = 'default' } = options

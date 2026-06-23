@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requireRole } from '@/lib/auth'
+import { getDeliveries } from '@/modules/delivery/service'
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,30 +8,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status') || ''
 
-    const where: Record<string, unknown> = { shipperId: user.id }
-    if (status) {
-      where.status = status
-    }
-
-    const deliveries = await db.order.findMany({
-      where,
-      include: {
-        buyer: {
-          select: { id: true, name: true, phone: true, address: true },
-        },
-        shop: {
-          select: { id: true, name: true, image: true, address: true, phone: true },
-        },
-        items: {
-          include: {
-            product: {
-              select: { id: true, name: true, image: true, unit: true },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    const deliveries = await getDeliveries(user.id, status)
 
     return NextResponse.json({ deliveries })
   } catch (error) {

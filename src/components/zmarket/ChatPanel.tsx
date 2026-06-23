@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { csrfFetch } from '@/lib/csrf-fetch'
-import { io, Socket } from 'socket.io-client'
+import { getPusherClient } from '@/lib/realtime-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -133,6 +133,34 @@ function getRoleLabel(role: string): string {
   return map[role] || role
 }
 
+interface ConnectionStatusProps {
+  pollingMode: boolean
+  isConnected: boolean
+}
+
+function ConnectionStatus({ pollingMode, isConnected }: ConnectionStatusProps) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {pollingMode ? (
+        <>
+          <RefreshCw className="h-3 w-3 text-amber-500" />
+          <span className="text-xs text-amber-600">Tự động cập nhật</span>
+        </>
+      ) : isConnected ? (
+        <>
+          <span className="h-2 w-2 rounded-full bg-green-500" />
+          <span className="text-xs text-green-600">Trực tuyến</span>
+        </>
+      ) : (
+        <>
+          <span className="h-2 w-2 rounded-full bg-red-400" />
+          <span className="text-xs text-muted-foreground">Đang kết nối...</span>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── ChatPanel Component ─────────────────────────────────────────────────────
 
 export default function ChatPanel({
@@ -142,7 +170,6 @@ export default function ChatPanel({
   onClearInitialTargetUserId,
 }: ChatPanelProps) {
   // ── State ─────────────────────────────────────────────────────────────────
-  const [socket, setSocket] = useState<Socket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [pollingMode, setPollingMode] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -232,6 +259,21 @@ export default function ChatPanel({
     }, POLLING_INTERVAL)
   }, [activeConversationId, scrollToBottom])
 
+  // ── Fetch conversations ───────────────────────────────────────────────────
+  const fetchConversations = useCallback(async () => {
+    try {
+      const res = await fetch('/api/chat/conversations')
+      if (res.ok) {
+        const data = await res.json()
+        setConversations(data.conversations || [])
+      }
+    } catch (err) {
+      console.error('Error fetching conversations:', err)
+    } finally {
+      setIsLoadingConvs(false)
+    }
+  }, [])
+
   // ── Start polling for conversations ───────────────────────────────────────
   const startConvPolling = useCallback(() => {
     if (convPollingRef.current) clearInterval(convPollingRef.current)
@@ -271,176 +313,104 @@ export default function ChatPanel({
     }
   }, [startConvPolling, startMessagePolling, activeConversationId])
 
-  // ── Socket.io connection ──────────────────────────────────────────────────
+  // ── Pusher connection ─────────────────────────────────────────────────────
   useEffect(() => {
-    let newSocket: Socket | null = null
-
-    try {
-      newSocket = io('/?XTransformPort=3003', {
-        path: '/socket.io',
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionAttempts: 5,
-        timeout: SOCKET_TIMEOUT,
-        withCredentials: true,
-      })
-    } catch (err) {
-      console.error('[Chat] Failed to initialize Socket.io:', err)
-      enablePollingMode()
+    const pusher = getPusherClient()
+    if (!pusher) {
+      setTimeout(() => {
+        enablePollingMode()
+      }, 0)
       return
     }
 
-    // Set a timeout: if not connected within SOCKET_TIMEOUT, fall back to polling
-    socketTimeoutRef.current = setTimeout(() => {
-      if (!newSocket?.connected) {
-        console.log('[Chat] Socket.io connection timeout, switching to polling mode')
-        newSocket.disconnect()
-        enablePollingMode()
-      }
-    }, SOCKET_TIMEOUT)
-
-    newSocket.on('connect', () => {
-      console.log('[Chat] Connected to socket server')
+    setTimeout(() => {
       setIsConnected(true)
       setPollingMode(false)
-      // Clear the timeout since we connected
-      if (socketTimeoutRef.current) {
-        clearTimeout(socketTimeoutRef.current)
-        socketTimeoutRef.current = null
-      }
-      // Stop any polling since we have real-time connection
-      stopPolling()
-      // Authentication is handled via signed cookies on the server side
-      // No need to send authenticate event
-    })
+    }, 0)
 
-    newSocket.on('disconnect', () => {
-      console.log('[Chat] Disconnected from socket server')
-      setIsConnected(false)
-      // Don't immediately switch to polling on disconnect, let reconnection handle it
-    })
+    const handleConnected = () => setIsConnected(true)
+    const handleDisconnected = () => setIsConnected(false)
 
-    newSocket.on('connect_error', (err) => {
-      console.warn('[Chat] Socket.io connection error:', err.message)
-      // If we're not in polling mode yet and this is a persistent failure, switch
-      if (!pollingMode) {
-        enablePollingMode()
-      }
-    })
+    pusher.connection.bind('connected', handleConnected)
+    pusher.connection.bind('disconnected', handleDisconnected)
 
-    // Handle new message from socket
-    newSocket.on('new-message', (msg: ChatMessage) => {
-      setMessages((prev) => {
-        // Avoid duplicates
-        if (prev.some((m) => m.id === msg.id)) return prev
-        return [...prev, msg]
-      })
-
-      // Update conversation list's last message and unread count
-      setConversations((prev) =>
-        prev.map((conv) => {
-          if (conv.id === msg.conversationId) {
-            const isMine = msg.senderId === userId
-            return {
-              ...conv,
-              lastMessage: {
-                id: msg.id,
-                content: msg.content,
-                type: msg.type,
-                imageUrl: msg.imageUrl,
-                senderId: msg.senderId,
-                createdAt: msg.createdAt,
-              },
-              unreadCount: isMine || conv.id === activeConversationId
-                ? conv.unreadCount
-                : conv.unreadCount + 1,
-              updatedAt: msg.createdAt,
-            }
-          }
-          return conv
-        })
-      )
-
-      // Show toast for messages not in active conversation
-      if (msg.conversationId !== activeConversationId && msg.senderId !== userId) {
-        const conv = conversations.find((c) => c.id === msg.conversationId)
-        if (conv?.otherUser) {
-          toast.info(`💬 ${conv.otherUser.name}: ${msg.type === 'IMAGE' ? '📷 Hình ảnh' : msg.content.slice(0, 50)}`)
-        }
-      }
-
-      // Auto-scroll if in active conversation
-      if (msg.conversationId === activeConversationId) {
-        scrollToBottom()
-      }
-    })
-
-    // Handle typing indicator
-    newSocket.on('user-typing', (data: { conversationId: string; userId: string; isTyping: boolean }) => {
-      setTypingUsers((prev) => {
-        const next = new Map(prev)
-        if (data.isTyping) {
-          next.set(data.conversationId, data.userId)
-        } else {
-          next.delete(data.conversationId)
-        }
-        return next
-      })
-
-      // Clear typing after 3 seconds
-      if (data.isTyping) {
-        const existing = typingTimeoutRef.current.get(data.conversationId)
-        if (existing) clearTimeout(existing)
-        typingTimeoutRef.current.set(
-          data.conversationId,
-          setTimeout(() => {
-            setTypingUsers((prev) => {
-              const next = new Map(prev)
-              next.delete(data.conversationId)
-              return next
-            })
-          }, 3000)
-        )
-      }
-    })
-
-    // Handle messages read
-    newSocket.on('messages-read', (data: { conversationId: string; userId: string }) => {
-      // Update messages as read
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.conversationId === data.conversationId && m.senderId !== data.userId
-            ? { ...m, isRead: true }
-            : m
-        )
-      )
-    })
-
-    // Handle unread count update
-    newSocket.on('unread-count', () => {
-      // Refresh conversations to get updated unread counts
-      fetchConversations()
-    })
-
-    // Handle errors
-    newSocket.on('error', (data: { message: string }) => {
-      console.error('[Chat] Socket error:', data.message)
-      toast.error(data.message)
-    })
-
-    setSocket(newSocket)
+    // Stop HTTP polling since we have realtime connection
+    stopPolling()
 
     return () => {
-      newSocket?.disconnect()
-      // Clean up timeouts
-      typingTimeoutRef.current.forEach((timeout) => clearTimeout(timeout))
-      if (socketTimeoutRef.current) {
-        clearTimeout(socketTimeoutRef.current)
-      }
-      stopPolling()
+      pusher.connection.unbind('connected', handleConnected)
+      pusher.connection.unbind('disconnected', handleDisconnected)
     }
-  }, [userId])
+  }, [enablePollingMode, stopPolling])
+
+  // ── Subscribe to channels ──────────────────────────────────────────────────
+  useEffect(() => {
+    const pusher = getPusherClient()
+    if (!pusher || pollingMode) return
+
+    // Channels to subscribe to
+    const channelNames = new Set<string>()
+    if (activeConversationId) {
+      channelNames.add(`chat-${activeConversationId}`)
+    }
+    conversations.forEach((c) => {
+      channelNames.add(`chat-${c.id}`)
+    })
+
+    const subscribed: { name: string; channel: any }[] = []
+
+    channelNames.forEach((channelName) => {
+      const channel = pusher.subscribe(channelName)
+      channel.bind('new-message', (msg: ChatMessage) => {
+        // 1. If active conversation, append message
+        if (msg.conversationId === activeConversationId) {
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === msg.id)) return prev
+            return [...prev, msg]
+          })
+          scrollToBottom()
+        } else if (msg.senderId !== userId) {
+          // 2. If not active conversation and sent by other user, show toast notification
+          const targetConv = conversations.find((c) => c.id === msg.conversationId)
+          if (targetConv?.otherUser) {
+            toast.info(`💬 ${targetConv.otherUser.name}: ${msg.type === 'IMAGE' ? '📷 Hình ảnh' : msg.content.slice(0, 50)}`)
+          }
+        }
+
+        // 3. Update conversation list item
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (c.id === msg.conversationId) {
+              const isMine = msg.senderId === userId
+              return {
+                ...c,
+                lastMessage: {
+                  id: msg.id,
+                  content: msg.content,
+                  type: msg.type,
+                  imageUrl: msg.imageUrl,
+                  senderId: msg.senderId,
+                  createdAt: msg.createdAt,
+                },
+                unreadCount: isMine || c.id === activeConversationId
+                  ? c.unreadCount
+                  : c.unreadCount + 1,
+                updatedAt: msg.createdAt,
+              }
+            }
+            return c
+          })
+        )
+      })
+      subscribed.push({ name: channelName, channel })
+    })
+
+    return () => {
+      subscribed.forEach((sub) => {
+        pusher.unsubscribe(sub.name)
+      })
+    }
+  }, [conversations, activeConversationId, pollingMode, userId, scrollToBottom])
 
   // ── Manage polling when active conversation changes ───────────────────────
   useEffect(() => {
@@ -455,30 +425,21 @@ export default function ChatPanel({
     }
   }, [pollingMode, activeConversationId, startMessagePolling])
 
-  // ── Fetch conversations ───────────────────────────────────────────────────
-  const fetchConversations = useCallback(async () => {
-    try {
-      const res = await fetch('/api/chat/conversations')
-      if (res.ok) {
-        const data = await res.json()
-        setConversations(data.conversations || [])
-      }
-    } catch (err) {
-      console.error('Error fetching conversations:', err)
-    } finally {
-      setIsLoadingConvs(false)
-    }
-  }, [])
 
   useEffect(() => {
-    fetchConversations()
+    const timer = setTimeout(() => {
+      fetchConversations()
+    }, 0)
+    return () => clearTimeout(timer)
   }, [fetchConversations])
 
   // ── Fetch messages when active conversation changes ───────────────────────
   useEffect(() => {
     if (!activeConversationId) {
-      setMessages([])
-      return
+      const timer = setTimeout(() => {
+        setMessages([])
+      }, 0)
+      return () => clearTimeout(timer)
     }
 
     const fetchMessages = async () => {
@@ -501,75 +462,50 @@ export default function ChatPanel({
     fetchMessages()
 
     // Mark as read when opening a conversation
-    if (socket && isConnected && !pollingMode) {
-      socket.emit('mark-read', { conversationId: activeConversationId })
-      // Update local unread count
+    const timer = setTimeout(() => {
       setConversations((prev) =>
         prev.map((conv) =>
           conv.id === activeConversationId ? { ...conv, unreadCount: 0 } : conv
         )
       )
-    } else if (pollingMode) {
-      // In polling mode, just clear unread locally
-      setConversations((prev) =>
-        prev.map((conv) =>
-          conv.id === activeConversationId ? { ...conv, unreadCount: 0 } : conv
-        )
-      )
-    }
-  }, [activeConversationId, socket, isConnected, userId, scrollToBottom])
+    }, 0)
 
-  // ── Send message (supports both Socket.io and HTTP API) ───────────────────
+    return () => clearTimeout(timer)
+  }, [activeConversationId, scrollToBottom])
+
+  // ── Send message (supports HTTP API) ──────────────────────────────────────
   const sendMessage = useCallback(
     async (content: string, type: 'TEXT' | 'IMAGE' = 'TEXT', imageUrl?: string) => {
       if (!activeConversationId || !content.trim()) return
 
       setIsSending(true)
       try {
-        if (socket && isConnected && !pollingMode) {
-          // Use Socket.io for real-time delivery
-          socket.emit('send-message', {
+        const res = await csrfFetch('/api/chat/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             conversationId: activeConversationId,
             content: content.trim(),
             type,
-            imageUrl: imageUrl || null,
-          })
-        } else {
-          // Use HTTP API as fallback (for polling mode / Vercel)
-          const res = await csrfFetch('/api/chat/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              conversationId: activeConversationId,
-              content: content.trim(),
-              type,
-              imageUrl: imageUrl || undefined,
-            }),
-          })
-          if (!res.ok) {
-            const data = await res.json()
-            toast.error(data.error || 'Không thể gửi tin nhắn')
-            return
-          }
-          // Refresh messages to show the sent message
-          const msgRes = await fetch(`/api/chat/conversations/${activeConversationId}?limit=50`)
-          if (msgRes.ok) {
-            const data = await msgRes.json()
-            setMessages(data.messages || [])
-            lastMessageIdRef.current = data.messages?.[data.messages.length - 1]?.id || ''
-            scrollToBottom()
-          }
-          // Refresh conversation list to update last message
-          fetchConversations()
+            imageUrl: imageUrl || undefined,
+          }),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          toast.error(data.error || 'Không thể gửi tin nhắn')
+          return
         }
+        // Refresh messages to show the sent message
+        const msgRes = await fetch(`/api/chat/conversations/${activeConversationId}?limit=50`)
+        if (msgRes.ok) {
+          const data = await msgRes.json()
+          setMessages(data.messages || [])
+          lastMessageIdRef.current = data.messages?.[data.messages.length - 1]?.id || ''
+          scrollToBottom()
+        }
+        // Refresh conversation list to update last message
+        fetchConversations()
         setNewMessage('')
-        // Clear typing
-        if (socket && isConnected && !pollingMode) {
-          socket.emit('typing', {
-            conversationId: activeConversationId,
-            isTyping: false,
-          })
-        }
       } catch (err) {
         console.error('Error sending message:', err)
         toast.error('Không thể gửi tin nhắn')
@@ -577,21 +513,15 @@ export default function ChatPanel({
         setIsSending(false)
       }
     },
-    [socket, isConnected, pollingMode, activeConversationId, userId, scrollToBottom, fetchConversations]
+    [activeConversationId, scrollToBottom, fetchConversations]
   )
 
-  // ── Handle text input change with typing indicator ────────────────────────
+  // ── Handle text input change ──────────────────────────────────────────────
   const handleInputChange = useCallback(
     (value: string) => {
       setNewMessage(value)
-      if (socket && isConnected && !pollingMode && activeConversationId) {
-        socket.emit('typing', {
-          conversationId: activeConversationId,
-          isTyping: value.length > 0,
-        })
-      }
     },
-    [socket, isConnected, pollingMode, activeConversationId]
+    []
   )
 
   // ── Handle send on Enter ──────────────────────────────────────────────────
@@ -711,8 +641,11 @@ export default function ChatPanel({
 
   useEffect(() => {
     if (initialTargetUserId) {
-      startConversation(initialTargetUserId)
-      onClearInitialTargetUserId?.()
+      const timer = setTimeout(() => {
+        startConversation(initialTargetUserId)
+        onClearInitialTargetUserId?.()
+      }, 0)
+      return () => clearTimeout(timer)
     }
   }, [initialTargetUserId, startConversation, onClearInitialTargetUserId])
 
@@ -727,27 +660,6 @@ export default function ChatPanel({
     setShowMobileMessages(false)
   }, [])
 
-  // ── Connection status component ───────────────────────────────────────────
-  const ConnectionStatus = () => (
-    <div className="flex items-center gap-1.5">
-      {pollingMode ? (
-        <>
-          <RefreshCw className="h-3 w-3 text-amber-500" />
-          <span className="text-xs text-amber-600">Tự động cập nhật</span>
-        </>
-      ) : isConnected ? (
-        <>
-          <span className="h-2 w-2 rounded-full bg-green-500" />
-          <span className="text-xs text-green-600">Trực tuyến</span>
-        </>
-      ) : (
-        <>
-          <span className="h-2 w-2 rounded-full bg-red-400" />
-          <span className="text-xs text-muted-foreground">Đang kết nối...</span>
-        </>
-      )}
-    </div>
-  )
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
 
@@ -772,7 +684,7 @@ export default function ChatPanel({
               )}
             </div>
             <div className="flex items-center gap-1">
-              <ConnectionStatus />
+              <ConnectionStatus pollingMode={pollingMode} isConnected={isConnected} />
               {/* New chat button */}
               <Dialog open={newChatOpen} onOpenChange={setNewChatOpen}>
                 <DialogTrigger asChild>
@@ -1165,7 +1077,7 @@ export default function ChatPanel({
               Chọn một hội thoại hoặc bắt đầu trò chuyện mới
             </p>
             <div className="flex items-center gap-2 mt-4">
-              <ConnectionStatus />
+              <ConnectionStatus pollingMode={pollingMode} isConnected={isConnected} />
             </div>
           </div>
         )}

@@ -1,31 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requireRole } from '@/lib/auth'
 import { sanitizeForStorage } from '@/lib/sanitize'
 import { z } from 'zod/v4'
+import { createProductSchema } from '@/modules/catalog/schema'
+import { createProduct, getSellerProducts, ServiceError } from '@/modules/catalog/service'
 
 export async function GET() {
   try {
     const user = await requireRole('SELLER', 'ADMIN')
-
-    const shop = await db.shop.findUnique({ where: { ownerId: user.id } })
-    if (!shop) {
-      return NextResponse.json({ products: [] })
-    }
-
-    const products = await db.product.findMany({
-      where: { shopId: shop.id },
-      include: {
-        category: {
-          select: { id: true, name: true, slug: true },
-        },
-        _count: {
-          select: { orderItems: true, reviews: true },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-
+    const products = await getSellerProducts(user.id)
     return NextResponse.json({ products })
   } catch (error) {
     if (error instanceof Error && (error.message === 'Unauthorized' || error.message === 'Forbidden')) {
@@ -38,55 +21,36 @@ export async function GET() {
   }
 }
 
-const createProductSchema = z.object({
-  name: z.string().min(2, 'Tên sản phẩm phải có ít nhất 2 ký tự').max(200, 'Tên sản phẩm quá dài'),
-  description: z.string().max(5000, 'Mô tả quá dài').optional(),
-  price: z.number().positive('Giá phải lớn hơn 0').max(1000000000, 'Giá quá lớn'),
-  originalPrice: z.number().positive().max(1000000000, 'Giá gốc quá lớn').optional(),
-  image: z.string().max(2000, 'URL hình ảnh quá dài').optional(),
-  unit: z.string().max(50, 'Đơn vị quá dài').default('kg'),
-  inStock: z.boolean().default(true),
-  categoryId: z.string().min(1, 'Vui lòng chọn danh mục'),
-})
-
 export async function POST(request: NextRequest) {
   try {
     const user = await requireRole('SELLER', 'ADMIN')
     const body = await request.json()
     const data = createProductSchema.parse(body)
 
-    const shop = await db.shop.findUnique({ where: { ownerId: user.id } })
-    if (!shop) {
-      return NextResponse.json(
-        { error: 'Bạn chưa có cửa hàng' },
-        { status: 400 }
-      )
-    }
-
     // Sanitize text inputs
     const sanitizedName = sanitizeForStorage(data.name)
-    const sanitizedDescription = data.description ? sanitizeForStorage(data.description) : null
+    const sanitizedDescription = data.description ? sanitizeForStorage(data.description) : undefined
 
-    const product = await db.product.create({
-      data: {
-        name: sanitizedName,
-        description: sanitizedDescription,
-        price: data.price,
-        originalPrice: data.originalPrice,
-        image: data.image,
-        unit: data.unit,
-        inStock: data.inStock,
-        categoryId: data.categoryId,
-        shopId: shop.id,
-      },
-      include: {
-        category: {
-          select: { id: true, name: true, slug: true },
-        },
-        shop: {
-          select: { id: true, name: true },
-        },
-      },
+    const images = data.images && data.images.length > 0
+      ? data.images
+      : data.image ? [data.image] : []
+
+    const product = await createProduct({
+      sellerId: user.id,
+      name: sanitizedName,
+      description: sanitizedDescription,
+      longDescription: data.longDescription,
+      price: data.price,
+      originalPrice: data.originalPrice || undefined,
+      unit: data.unit,
+      stockQuantity: data.stockQuantity,
+      sku: data.sku || undefined,
+      images,
+      categoryId: data.categoryId,
+      weightGram: data.weightGram || undefined,
+      origin: data.origin || undefined,
+      storageInfo: data.storageInfo || undefined,
+      variants: data.variants
     })
 
     return NextResponse.json(
@@ -103,6 +67,9 @@ export async function POST(request: NextRequest) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    return NextResponse.json({ error: 'Lỗi server' }, { status: 500 })
+    if (error instanceof ServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode })
+    }
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Lỗi server' }, { status: 500 })
   }
 }
